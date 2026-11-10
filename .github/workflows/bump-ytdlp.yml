@@ -68,12 +68,23 @@ jobs:
           deno-version: v2.x
 
       # ubuntu-latest NON ha ffmpeg preinstallato (verificato: "command not found").
-      - name: ffmpeg (action, build statica nella tool cache)
-        uses: FedericoCarboni/setup-ffmpeg@v3
+      # Build ufficiale del progetto yt-dlp, scaricata da GitHub e messa nel PATH:
+      # niente privilegi di root e niente action di terze parti (quella provata
+      # falliva nel download con "fetch failed").
+      - name: ffmpeg (build yt-dlp/FFmpeg-Builds nel PATH)
+        run: |
+          set -euo pipefail
+          dest="$RUNNER_TEMP/ffmpeg"
+          mkdir -p "$dest"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/ffmpeg.tar.xz" \
+            "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+          tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" -C "$dest" --strip-components=1
+          echo "$dest/bin" >> "$GITHUB_PATH"
 
       - name: ffmpeg presente sul runner
         run: |
           command -v ffmpeg
+          command -v ffprobe
           ffmpeg -hide_banner -version | sed -n 1p
 
       - name: Determina versione corrente e ultima release

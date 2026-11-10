@@ -227,10 +227,12 @@ def test_workflow_lessons_from_the_first_real_runs():
     # 1. senza "shell: bash" esplicito non c'è pipefail: "ffmpeg -version | head -1" usciva con 0 senza ffmpeg
     assert job["defaults"]["run"]["shell"] == "bash"
     assert not re.search(r"ffmpeg[^\n|]*\|\s*head", text), "niente pipe verso head sul controllo di ffmpeg"
-    # 2. ubuntu-latest non ha ffmpeg: va installato (senza sudo) e verificato
+    # 2. ubuntu-latest non ha ffmpeg: va installato (senza privilegi di root) e verificato.
+    #    L'action di terze parti provata falliva nel download: build ufficiale yt-dlp da GitHub.
     uses = [s.get("uses", "") for s in job["steps"]]
-    assert any(u.startswith("FedericoCarboni/setup-ffmpeg@") for u in uses)
-    assert "command -v ffmpeg" in text
+    assert not any("setup-ffmpeg" in u for u in uses)
+    assert "github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/" in text and '>> "$GITHUB_PATH"' in text
+    assert "command -v ffmpeg" in text and "command -v ffprobe" in text
     # 3. la suite non può saltare test in CI (il test d'integrazione saltava senza ffmpeg)
     suite = next(s for s in job["steps"] if s.get("id") == "suite")
     assert "-rs" in suite["run"] and "skipped" in suite["run"] and "exit 1" in suite["run"]
