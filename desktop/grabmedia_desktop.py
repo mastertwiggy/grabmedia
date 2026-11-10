@@ -677,7 +677,32 @@ def error_html(message: str) -> str:
             f"<p>{html.escape(message)}</p><p>Dettagli nel file {log_path}</p></body></html>")
 
 
-SMOKE_CHECK_JS = "window.__grabmediaReady === true && window.__grabmediaApi === true"
+# Menu e finestre di sistema in italiano, con le parole che usa macOS
+# ("Informazioni su", "Nascondi" ed "Esci da" sono seguiti dal nome del programma).
+LOCALIZATION_IT = {
+    "global.quitConfirmation": "Vuoi davvero uscire?",
+    "global.ok": "OK",
+    "global.quit": "Esci",
+    "global.cancel": "Annulla",
+    "global.saveFile": "Salva file",
+    "cocoa.menu.about": "Informazioni su",
+    "cocoa.menu.services": "Servizi",
+    "cocoa.menu.view": "Vista",
+    "cocoa.menu.edit": "Modifica",
+    "cocoa.menu.hide": "Nascondi",
+    "cocoa.menu.hideOthers": "Nascondi altre",
+    "cocoa.menu.showAll": "Mostra tutte",
+    "cocoa.menu.quit": "Esci da",
+    "cocoa.menu.fullscreen": "Entra in modalità a tutto schermo",
+    "cocoa.menu.cut": "Taglia",
+    "cocoa.menu.copy": "Copia",
+    "cocoa.menu.paste": "Incolla",
+    "cocoa.menu.selectAll": "Seleziona tutto",
+    "windows.fileFilter.allFiles": "Tutti i file",
+    "windows.fileFilter.otherFiles": "Altri tipi di file",
+}
+
+SMOKE_CHECK_JS ="window.__grabmediaReady === true && window.__grabmediaApi === true"
 SMOKE_INFO_JS = """JSON.stringify({
   title: document.title,
   mode: (document.querySelector('#mode .on') || {dataset: {}}).dataset.mode || null,
@@ -838,7 +863,8 @@ def run_app(backend: Backend, *, smoke: bool = False) -> int:
             window.destroy()
 
     try:
-        webview.start(boot, private_mode=True, gui="edgechromium" if engine == "edgechromium" else None)
+        webview.start(boot, private_mode=True, localization=LOCALIZATION_IT,
+                      gui="edgechromium" if engine == "edgechromium" else None)
     except Exception as exc:  # noqa: BLE001
         log.exception("La finestra nativa si è chiusa con un errore")
         result["code"] = 1

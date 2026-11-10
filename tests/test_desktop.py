@@ -524,6 +524,16 @@ def test_read_clipboard_never_raises(monkeypatch):
     assert gd.read_clipboard() == ""
 
 
+def test_menus_are_translated_completely():
+    """Menu del Mac in italiano: ogni voce di pywebview usata da cocoa ha la sua traduzione."""
+    localization = pytest.importorskip("webview.localization")
+    used = {k for k in localization.original_localization if k.startswith(("cocoa.", "global."))}
+    assert used <= set(gd.LOCALIZATION_IT)
+    assert gd.LOCALIZATION_IT["cocoa.menu.edit"] == "Modifica" and gd.LOCALIZATION_IT["cocoa.menu.quit"] == "Esci da"
+    source = (ROOT / "desktop" / "grabmedia_desktop.py").read_text(encoding="utf-8")
+    assert "localization=LOCALIZATION_IT" in source
+
+
 def test_error_page_escapes_the_message():
     page = gd.error_html("<script>alert(1)</script>")
     assert "<script>alert" not in page and "&lt;script&gt;" in page and "grabmedia.log" in page
