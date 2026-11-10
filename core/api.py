@@ -488,6 +488,11 @@ class TaskQueue:
                     task.tracks_done += 1
                     if item.result_path:
                         task.files.append(str(item.result_path))
+            # Con più download in parallelo i file arrivano in ordine di completamento:
+            # l'elenco finale segue l'ordine dei brani (album e playlist restano in sequenza).
+            position = {str(item.result_path): index for index, item in enumerate(summary.planned)
+                        if item.result_path}
+            task.files.sort(key=lambda path: position.get(path, len(position)))
             if summary.url_errors:
                 task.message = summary.url_errors[0][1]
                 if summary.url_error_details:

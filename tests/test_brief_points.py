@@ -418,6 +418,8 @@ def test_app_audio_endpoints_end_to_end(app_main, tmp_path: Path):
     assert payload["state"] == "done" and payload["tracks_done"] == 3 and payload["progress"] == 100.0
     assert payload["download_urls"] == [f"/audio/{task_id}/file/{i}" for i in range(3)]
     assert payload["filenames"][0] == "01 - Song 1.ogg"
+    # ordine dei brani, non di completamento (i download girano in parallelo)
+    assert payload["filenames"] == sorted(payload["filenames"]) and len(set(payload["filenames"])) == 3
     response = asyncio.run(main.serve_audio_file(0, task_id))
     assert Path(response.path).name == "01 - Song 1.ogg" and Path(response.path).exists()
     with pytest.raises(HTTPException) as exc:
