@@ -39,6 +39,27 @@ def ensure_ffmpeg() -> None:
     print("[dev] ATTENZIONE: ffmpeg non trovato nel PATH (mp3 e merge video non funzioneranno)")
 
 
+def ensure_js_runtime() -> None:
+    """Come per ffmpeg: dopo `winget install DenoLand.Deno` il PATH aggiornato vale
+    solo per i programmi avviati in seguito, quindi deno si cerca anche nella
+    cartella di winget. Senza runtime il provider YouTube di Provider audio resta
+    disabilitato (vedi README)."""
+    if shutil.which("deno") or shutil.which("node") or os.getenv("YTDLP_JS_RUNTIME"):
+        return
+    local = os.getenv("LOCALAPPDATA", "")
+    patterns = [
+        os.path.join(local, "Microsoft", "WinGet", "Packages", "DenoLand.Deno*", "deno.exe"),
+        os.path.join(local, "Microsoft", "WinGet", "Links", "deno.exe"),
+        os.path.join(os.path.expanduser("~"), ".deno", "bin", "deno*"),
+    ]
+    for pattern in patterns:
+        for path in glob.glob(pattern):
+            os.environ["PATH"] = os.path.dirname(path) + os.pathsep + os.environ["PATH"]
+            print(f"[dev] deno trovato in {path}")
+            return
+    print("[dev] ATTENZIONE: nessun runtime JavaScript (deno/node): YouTube e Spotify in Provider audio non funzioneranno")
+
+
 def start_fake_redis() -> None:
     from fakeredis import TcpFakeServer
 
@@ -53,6 +74,7 @@ def start_fake_redis() -> None:
 
 def main() -> None:
     ensure_ffmpeg()
+    ensure_js_runtime()
     env = os.environ.copy()
     env["REDIS_HOST"] = "127.0.0.1"
     env["REDIS_PORT"] = str(REDIS_PORT)
