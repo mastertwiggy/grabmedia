@@ -139,7 +139,8 @@ Una traccia delegata senza match affidabile viene marcata `skipped` (non `failed
 
 1. Crea un'app su https://developer.spotify.com/dashboard e copia Client ID e Client secret in `.env` (vedi `.env.example`).
 2. `auth = "client_credentials"` basta per il catalogo pubblico. Per playlist private e brani salvati usa `auth = "pkce"` (scope `playlist-read-private playlist-read-collaborative user-library-read`, token in `token_cache_path`): al primo uso si apre il browser.
-3. Un 403 significa che l'app è in Development Mode: aggiungi il tuo account in Dashboard → app → Settings → User Management, oppure richiedi l'Extended Quota Mode (necessaria per le playlist).
+3. **L'account proprietario dell'app deve avere Spotify Premium.** Senza, la Web API risponde 403 "Active premium subscription required for the owner of the app" su ogni endpoint (track, album, artist, playlist); dopo l'attivazione possono servire alcune ore. Il provider lo riconosce e lo dice nell'hint.
+4. Un 403 diverso significa che l'app è in Development Mode: aggiungi il tuo account in Dashboard → app → Settings → User Management, oppure richiedi l'Extended Quota Mode (necessaria per le playlist).
 
 Le tracce senza match affidabile (sotto `unmatched_threshold`) finiscono in `unmatched.log` (`timestamp  url  query  punteggio  provider`) e vengono marcate `skipped`. I metadati risolti restano in cache SQLite per `cache_ttl_days` giorni (chiave = URL canonico). Gli ISRC vengono richiesti solo con `fetch_isrc = true` (`GET /tracks?ids=` a lotti da 50).
 
@@ -153,7 +154,7 @@ Smoke test reale (richiede le credenziali in `.env`): risolve una playlist pubbl
 python scripts/spotify_smoke.py "https://open.spotify.com/playlist/<id>"
 ```
 
-Questo confronto non è ancora stato eseguito con credenziali reali: le fixture di `tests/test_spotify.py` sono sintetiche.
+Stato al 2026-11-10: lo smoke è stato eseguito con credenziali reali, ma l'app usata non ha un proprietario Premium e Spotify ha risposto 403 a tutte le richieste di dati. Risultato: l'autenticazione funziona, la risposta reale del 403 è registrata in `tests/cassettes/spotify_403_premium_required.yaml` (token oscurati) ed è usata come fixture; il confronto campo per campo su tracce e playlist **non è ancora stato fatto**, quindi le fixture di `tests/test_spotify.py` restano sintetiche. Va rilanciato lo stesso comando quando l'account ha Premium.
 
 ### SoundCloud e Bandcamp
 

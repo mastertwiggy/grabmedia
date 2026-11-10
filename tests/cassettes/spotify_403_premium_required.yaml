@@ -1,0 +1,113 @@
+interactions:
+- request:
+    body: grant_type=client_credentials
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, br
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '29'
+      Content-Type:
+      - application/x-www-form-urlencoded
+      User-Agent:
+      - python-requests/2.34.2
+      authorization:
+      - REDACTED
+    method: POST
+    uri: https://accounts.spotify.com/api/token
+  response:
+    body:
+      string: '{"access_token": "REDACTED", "token_type": "Bearer", "expires_in":
+        3600}'
+    headers:
+      Accept-Ranges:
+      - bytes
+      Connection:
+      - keep-alive
+      Date:
+      - Tue, 10 Nov 2026 10:46:24 GMT
+      Strict-Transport-Security:
+      - max-age=300
+      Vary:
+      - Accept-Encoding
+      X-Cache:
+      - MISS
+      X-Cache-Hits:
+      - '0'
+      X-Served-By:
+      - cache-bgy-lime1210038-BGY
+      X-Timer:
+      - S1794307585.665427,VS0,VE33
+      content-length:
+      - '199'
+      content-type:
+      - application/json
+      request-id:
+      - a3824718-2cab-47d1-8a1b-07a8b67e8c4f
+      server:
+      - envoy
+      set-cookie:
+      - __Host-device_id=AQAplMvCSH5pbu3IVFBXFPvg9TmQ9tj7vS3uFrWlRMhKCI0Voqhn0OLGqC_SMpGJbk7qQmgqLjcIeAgZywmWf5kCWDf9LyIY60M;Version=1;Path=/;Max-Age=2147483647;Secure;HttpOnly;SameSite=Lax
+      - sp_tr=false;Version=1;Domain=accounts.spotify.com;Path=/;Secure;SameSite=Lax
+      transfer-encoding:
+      - chunked
+      via:
+      - HTTP/1.1 fringe, HTTP/2 edgeproxy, 1.1 google, 1.1 varnish
+      x-content-type-options:
+      - nosniff
+      x-envoy-upstream-service-time:
+      - '5'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, br
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - python-requests/2.34.2
+      authorization:
+      - REDACTED
+    method: GET
+    uri: https://api.spotify.com/v1/playlists/6NrlbBDMMeZ9Mot011Cfqu?fields=name%2Cowner.display_name&additional_types=track
+  response:
+    body:
+      string: Active premium subscription required for the owner of the app. When
+        the subscription status changes, it can take a few hours before requests are
+        allowed again.
+    headers:
+      Transfer-Encoding:
+      - chunked
+      alt-svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      cache-control:
+      - private, max-age=0
+      content-length:
+      - '159'
+      date:
+      - Tue, 10 Nov 2026 10:46:26 GMT
+      server:
+      - envoy
+      server-timing:
+      - edge;dur=44
+      strict-transport-security:
+      - max-age=31536000
+      via:
+      - HTTP/2 edgeproxy, 1.1 google
+      x-content-type-options:
+      - nosniff
+    status:
+      code: 403
+      message: Forbidden
+version: 1

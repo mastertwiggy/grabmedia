@@ -77,6 +77,17 @@ _HINT_403 = (
     "editoriali Spotify richiede inoltre l'Extended Quota Mode (richiedila dalla dashboard). "
     "In alternativa aggiungi il tuo account alla lista utenti e usa auth = \"pkce\" in [options.spotify]."
 )
+# 403 reale osservato il 2026-11-10 su TUTTI gli endpoint (track, album, artist,
+# playlist), con corpo in testo semplice e non JSON: "Active premium subscription
+# required for the owner of the app. ..." (cassetta spotify_403_premium_required.yaml).
+_PREMIUM_REQUIRED_RE = re.compile(r"premium subscription required", re.I)
+_HINT_PREMIUM = (
+    "Spotify richiede un abbonamento Premium attivo sull'account PROPRIETARIO dell'app (quello con cui "
+    f"l'hai creata su {DASHBOARD_URL}). Non dipende da Development Mode, lista utenti o Extended Quota. "
+    "Attiva Premium su quell'account, oppure crea l'app da un account Premium e aggiorna "
+    "SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET in .env. Dopo il cambio possono servire alcune ore "
+    "prima che le richieste vengano accettate."
+)
 
 
 # ------------------------------------------------------------------ URL
@@ -125,9 +136,17 @@ def map_error(exc: BaseException, provider: str, *, what: str = "") -> ProviderE
         return ProviderError(f"{prefix}errore del server Spotify ({msg})", retryable=True,
                              status_code=status, provider=provider, hint="Errore temporaneo: il core riprova con backoff.")
     if status == 401:
-        return ProviderUnavailable(f"{prefix}credenziali rifiutate (401): {msg}", provider=provider, hint=_HINT_DASHBOARD)
+        err = ProviderUnavailable(f"{prefix}credenziali rifiutate (401): {msg}", provider=provider, hint=_HINT_DASHBOARD)
+        err.status_code, err.kind = 401, "auth"
+        return err
     if status == 403:
-        return ProviderUnavailable(f"{prefix}accesso negato (403): {msg}", provider=provider, hint=_HINT_403)
+        if _PREMIUM_REQUIRED_RE.search(msg) or _PREMIUM_REQUIRED_RE.search(str(exc)):
+            err = ProviderUnavailable(f"{prefix}accesso negato (403): {msg}", provider=provider, hint=_HINT_PREMIUM)
+            err.status_code, err.kind = 403, "premium_required"
+            return err
+        err = ProviderUnavailable(f"{prefix}accesso negato (403): {msg}", provider=provider, hint=_HINT_403)
+        err.status_code, err.kind = 403, "forbidden"
+        return err
     if status == 404:
         return ProviderError(f"{prefix}non trovato (404): {msg}", status_code=404, provider=provider,
                              hint="Controlla l'URL. Con auth = \"client_credentials\" le playlist private non sono visibili: usa \"pkce\".")

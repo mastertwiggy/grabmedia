@@ -250,6 +250,39 @@ def test_403_on_playlist_is_unavailable_with_hint(sp: SpotifySource, cassette):
     assert exc.value.retryable is False
 
 
+def test_real_403_premium_required_has_its_own_hint(creds, opts):
+    """Cassetta REGISTRATA dal vero il 2026-11-10 (scripts/spotify_smoke.py): con
+    un'app il cui proprietario non ha Premium, Spotify risponde 403 su ogni
+    endpoint, con corpo in testo semplice (non JSON). L'hint deve parlare di
+    Premium, non di Development Mode / User Management / Extended Quota."""
+    real = Path(__file__).parent / "cassettes" / "spotify_403_premium_required.yaml"
+    recorded = yaml.safe_load(real.read_text(encoding="utf-8"))["interactions"]
+    # segreti oscurati alla registrazione: header di autorizzazione e access token
+    assert all(i["request"]["headers"]["authorization"] == ["REDACTED"] for i in recorded)
+    assert json.loads(recorded[0]["response"]["body"]["string"])["access_token"] == "REDACTED"
+    assert recorded[1]["response"]["status"]["code"] == 403
+    assert not recorded[1]["response"]["body"]["string"].lstrip().startswith("{")  # testo semplice, non JSON
+    src = SpotifySource({k: v for k, v in opts.items() if k != "market"})  # registrata senza market
+    src._sleep = lambda s: None
+    try:
+        with vcr.VCR(record_mode="none", match_on=VCR_MATCH).use_cassette(str(real)):
+            with pytest.raises(ProviderUnavailable) as exc:
+                src.resolve("https://open.spotify.com/playlist/6NrlbBDMMeZ9Mot011Cfqu")
+    finally:
+        src.close()
+    err = exc.value
+    assert err.status_code == 403 and err.kind == "premium_required" and err.retryable is False
+    assert "Active premium subscription required for the owner of the app" in err.message
+    assert "Premium" in err.hint and "PROPRIETARIO" in err.hint and "alcune ore" in err.hint
+    assert "User Management" not in err.hint.split("Non dipende")[0]
+    # il 403 generico (JSON "Forbidden") tiene l'hint su Development Mode
+    from spotipy.exceptions import SpotifyException
+
+    generic = map_error(SpotifyException(403, -1, "https://api.spotify.com/v1/x:\n Forbidden"), "spotify")
+    assert generic.kind == "forbidden" and generic.status_code == 403 and "User Management" in generic.hint
+    assert map_error(SpotifyException(401, -1, "x"), "spotify").status_code == 401
+
+
 def test_429_respects_retry_after(sp: SpotifySource, cassette):
     sleeps: list[float] = []
     sp._sleep = sleeps.append

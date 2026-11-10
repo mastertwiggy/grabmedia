@@ -69,6 +69,18 @@ def offline_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_real_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """I test non leggono MAI il .env dello sviluppatore: il percorso di default
+    punta a un file inesistente e le credenziali già nell'ambiente vengono tolte.
+    Chi ne ha bisogno le imposta finte (fixture ``creds``)."""
+    from core import config
+
+    monkeypatch.setattr(config, "DEFAULT_ENV_PATH", tmp_path_factory.mktemp("env") / ".env")
+    for key in ("SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "SPOTIFY_REDIRECT_URI"):
+        monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def isolated_cookie_dir(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
     """I file cookie del browser (anche finti) vanno in una directory del test,
     mai in quella reale dell'utente."""
