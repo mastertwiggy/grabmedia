@@ -2,8 +2,10 @@
 
 Un solo eseguibile che fa tutto in locale, senza installare niente:
 
-* finestra piccola (tkinter) con "Apri GrabMedia", "Apri la cartella della musica", "Esci";
-* server web interno su 127.0.0.1 (porta libera), lo stesso sito del progetto;
+* finestra nativa (pywebview: WebKit su macOS, Edge WebView2 su Windows) con
+  l'interfaccia da app ``frontend/app.html``: niente browser, niente barra degli indirizzi;
+  se il motore web manca si ripiega sulla finestrella tkinter + browser;
+* server web interno su 127.0.0.1 (porta libera), che serve interfaccia e API;
 * Redis in memoria (fakeredis) e worker dei download come processo figlio;
 * ffmpeg e deno inclusi nel pacchetto (cartella ``bin``), messi nel PATH;
 * nessuna password: ascolta solo su 127.0.0.1 (``GRABMEDIA_NO_AUTH=1``);
@@ -17,6 +19,8 @@ non è Python):
 * ``--no-gui``          -> solo server (test e uso da terminale), con ``--port N``;
 * ``--worker``          -> worker dei download (lanciato dal processo principale);
 * ``--self-check``      -> controlla che il pacchetto sia completo (JSON, exit 0/1);
+* ``--gui-smoke``       -> apre la finestra vera, controlla l'interfaccia e si chiude (exit 0/1);
+* ``--tk``              -> finestrella semplice + browser (la stessa usata se manca il motore web);
 * ``-m yt_dlp ARGS...`` -> yt-dlp, perché il sito lo invoca come ``python -m yt_dlp``.
 """
 
@@ -60,6 +64,25 @@ def data_dir() -> Path:
 def music_dir() -> Path:
     """Dove finisce la musica di "Provider audio" (override: ``GRABMEDIA_MUSIC_DIR``)."""
     return Path(os.environ.get("GRABMEDIA_MUSIC_DIR") or Path.home() / "Music" / APP_NAME)
+
+
+def video_dir() -> Path:
+    """Dove finiscono i video (override: ``GRABMEDIA_VIDEO_DIR``): Filmati su macOS, Video su Windows."""
+    override = os.environ.get("GRABMEDIA_VIDEO_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ("Movies" if sys.platform == "darwin" else "Videos") / APP_NAME
+
+
+# Nomi con cui Finder ed Esplora file mostrano le cartelle dell'utente in italiano
+_HOME_FOLDER_NAMES = {"Music": "Musica", "Movies": "Filmati", "Videos": "Video"}
+
+
+def folder_label(path: Path) -> str:
+    """Etichetta breve per l'interfaccia, es. ``Musica › GrabMedia``."""
+    parent = _HOME_FOLDER_NAMES.get(path.parent.name, path.parent.name) if path.parent.parent == Path.home() \
+        else path.parent.name
+    return f"{parent} › {path.name}" if parent else path.name
 
 
 def bundled_bin_dir() -> Path | None:
@@ -183,6 +206,10 @@ def mode_from_argv(argv: list[str]) -> str:
         return "worker"
     if "--self-check" in argv:
         return "selfcheck"
+    if "--gui-smoke" in argv:
+        return "guismoke"
+    if "--tk" in argv:
+        return "tk"
     if "--no-gui" in argv:
         return "nogui"
     return "gui"
@@ -323,14 +350,23 @@ def self_check() -> dict:
         report["redis"] = False
         report["problems"].append(f"Redis in memoria non avviabile: {type(exc).__name__}: {exc}")
     try:
-        from app.main import FRONTEND_INDEX
+        from app.main import FRONTEND_APP, FRONTEND_INDEX
 
-        report["frontend"] = FRONTEND_INDEX.is_file()
+        report["frontend"] = FRONTEND_INDEX.is_file() and FRONTEND_APP.is_file()
     except Exception as exc:  # noqa: BLE001
         report["frontend"] = False
         report["problems"].append(f"sito non importabile: {exc}")
     if report["frontend"] is False and not any("sito" in p for p in report["problems"]):
-        report["problems"].append("pagina del sito mancante")
+        report["problems"].append("pagine dell'interfaccia mancanti")
+    # Finestra nativa: il modulo del motore deve essere nel pacchetto. Se manca solo
+    # WebView2 sul computer non è un difetto del pacchetto (si usa la finestra di riserva).
+    try:
+        report["window"] = native_engine()
+    except ImportError as exc:
+        report["window"] = None
+        report["problems"].append(f"finestra nativa non inclusa: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        report["window"] = f"riserva ({exc})"
     report["ok"] = not report["problems"]
     return report
 
@@ -362,6 +398,8 @@ class Backend:
         return f"http://127.0.0.1:{self.port}"
 
     def start(self) -> None:
+        if self._worker is not None or self._thread is not None:
+            return  # già avviato (la finestra di riserva riusa lo stesso backend)
         try:
             env = prepare_environment(self.redis_port)
             from fakeredis import TcpFakeServer
@@ -385,9 +423,12 @@ class Backend:
             from app.main import app
 
             config = uvicorn.Config(app, host="127.0.0.1", port=self.port, log_config=None, access_log=False)
-            self._server = uvicorn.Server(config)
-            self._thread = threading.Thread(target=self._server.run, daemon=True, name="uvicorn")
-            self._thread.start()
+            server = uvicorn.Server(config)
+            thread = threading.Thread(target=server.run, daemon=True, name="uvicorn")
+            thread.start()
+            # assegnati solo a thread avviato: ready() non deve mai vedere un thread
+            # creato ma non ancora partito (lo scambiava per un server già morto)
+            self._server, self._thread = server, thread
         except Exception as exc:  # noqa: BLE001 - l'errore va mostrato nella finestra, non perso
             self.error = f"{type(exc).__name__}: {exc}"
             raise
@@ -400,7 +441,7 @@ class Backend:
             return False
         if getattr(server, "started", False):
             return True
-        if not thread.is_alive():  # uvicorn è uscito senza partire: di solito porta occupata
+        if thread.ident is not None and not thread.is_alive():  # uvicorn è uscito senza partire: di solito porta occupata
             self.error = f"il server non è partito (porta {self.port} occupata?)"
         return False
 
@@ -442,8 +483,381 @@ def open_folder(path: Path) -> None:
         subprocess.Popen(["xdg-open", str(path)])
 
 
-# ------------------------------------------------------------------------ GUI
-def run_gui(backend: Backend) -> None:
+# ------------------------------------------------------------- finestra nativa
+def read_clipboard() -> str:
+    """Testo negli appunti di sistema ("" se vuoti o non leggibili)."""
+    text = ""
+    try:
+        if sys.platform == "darwin":
+            text = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3).stdout
+        elif sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            user32.OpenClipboard.argtypes = [wintypes.HWND]
+            user32.GetClipboardData.argtypes = [wintypes.UINT]
+            user32.GetClipboardData.restype = wintypes.HANDLE
+            kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalLock.restype = wintypes.LPVOID
+            kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+            for _ in range(10):  # un altro programma può tenerli aperti per un attimo
+                if user32.OpenClipboard(None):
+                    break
+                time.sleep(0.05)
+            else:
+                return ""
+            try:
+                handle = user32.GetClipboardData(13)  # CF_UNICODETEXT
+                pointer = kernel32.GlobalLock(handle) if handle else None
+                if pointer:
+                    try:
+                        text = ctypes.wstring_at(pointer)
+                    finally:
+                        kernel32.GlobalUnlock(handle)
+            finally:
+                user32.CloseClipboard()
+        else:
+            text = subprocess.run(["xclip", "-o", "-selection", "clipboard"],
+                                  capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return ""
+    return (text or "").strip()[:4096]
+
+
+def system_dark_mode() -> bool:
+    """Tema scuro del sistema: serve solo a evitare il lampo bianco all'apertura."""
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
+                                 capture_output=True, text=True, timeout=3).stdout
+            return out.strip().lower() == "dark"
+        if sys.platform == "win32":
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+                return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return False
+
+
+def reveal_in_file_manager(path: Path) -> None:
+    """Apre Finder / Esplora file con il file selezionato."""
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    elif sys.platform == "win32":
+        subprocess.Popen(f'explorer /select,"{path}"')  # noqa: S602 - percorso controllato, niente shell
+    else:
+        subprocess.Popen(["xdg-open", str(path.parent)])
+
+
+def unique_path(path: Path) -> Path:
+    """``nome.ext`` libero: se esiste già diventa ``nome (2).ext``, ``nome (3).ext``…"""
+    if not path.exists():
+        return path
+    for n in range(2, 1000):
+        candidate = path.with_name(f"{path.stem} ({n}){path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"troppi file con lo stesso nome: {path.name}")
+
+
+class DesktopApi:
+    """Funzioni del programma chiamabili dall'interfaccia (``window.pywebview.api``).
+
+    Tutto ciò che non inizia con ``_`` è esposto alla pagina: per questo ogni
+    metodo controlla che la finestra mostri la NOSTRA pagina (se per qualche
+    motivo navigasse altrove, quel sito non potrebbe usare queste funzioni) e
+    lavora solo dentro le cartelle di GrabMedia.
+    """
+
+    def __init__(self, base_url: str) -> None:
+        self._base = base_url.rstrip("/") + "/"
+        self._window = None
+        self._saved: dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    def _trusted(self) -> bool:
+        if self._window is None:
+            return False
+        try:
+            url = self._window.get_current_url() or ""
+        except Exception:  # noqa: BLE001
+            return False
+        return url.startswith(self._base)
+
+    @staticmethod
+    def _roots() -> list[Path]:
+        return [music_dir().resolve(), video_dir().resolve()]
+
+    def folders(self) -> dict:
+        if not self._trusted():
+            return {}
+        return {
+            "platform": "mac" if sys.platform == "darwin" else "windows" if sys.platform == "win32" else "linux",
+            "music": str(music_dir()), "music_label": folder_label(music_dir()),
+            "video": str(video_dir()), "video_label": folder_label(video_dir()),
+        }
+
+    def reveal(self, path: str) -> bool:
+        if not self._trusted() or not isinstance(path, str) or not path:
+            return False
+        target = Path(path).resolve()
+        if not any(target.is_relative_to(root) for root in self._roots()) or not target.exists():
+            return False
+        reveal_in_file_manager(target)
+        return True
+
+    def open_folder(self, which: str) -> bool:
+        if not self._trusted():
+            return False
+        open_folder(video_dir() if which == "video" else music_dir())
+        return True
+
+    def paste(self) -> str:
+        return read_clipboard() if self._trusted() else ""
+
+    def save_job(self, job_id: str) -> dict:
+        """Copia il video finito dalla cache alla cartella Video/Filmati (una volta sola)."""
+        if not self._trusted():
+            return {"error": "non consentito"}
+        from app import database
+
+        if not isinstance(job_id, str) or not database.is_valid_job_id(job_id):
+            return {"error": "download sconosciuto"}
+        with self._lock:
+            if job_id in self._saved and Path(self._saved[job_id]).exists():
+                return {"path": self._saved[job_id]}
+            job = database.get_job(job_id) or {}
+            if job.get("status") != "completed":
+                return {"error": "download non ancora finito"}
+            source = Path(job.get("filepath") or "")
+            cache = Path(os.environ.get("DOWNLOAD_DIR") or data_dir() / "cache").resolve()
+            if not source.is_file() or not source.resolve().is_relative_to(cache):
+                return {"error": "il file non è più disponibile (i download vengono tenuti 24 ore)"}
+            try:
+                target_dir = video_dir()
+                target_dir.mkdir(parents=True, exist_ok=True)
+                target = unique_path(target_dir / source.name)
+                shutil.copy2(source, target)
+            except OSError as exc:
+                return {"error": f"impossibile salvare il file: {exc}"}
+            self._saved[job_id] = str(target)
+            return {"path": str(target)}
+
+
+_PAGE_STYLE = """
+<style>
+  :root { color-scheme: light dark; --bg: #f5f5f7; --fg: #1d1d1f; --muted: #6e6e73; --accent: #007aff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f5f5f7; --muted: #98989d; --accent: #0a84ff; } }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); cursor: default;
+    font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    text-align: center; padding: 0 40px; -webkit-user-select: none; user-select: none; }
+  .spin { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid rgba(128,128,128,.25);
+    border-top-color: var(--accent); animation: r .8s linear infinite; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  p { margin: 0; color: var(--muted); max-width: 440px; -webkit-user-select: text; user-select: text; }
+</style>"""
+
+LOADING_HTML = f"<!doctype html><html><head><meta charset='utf-8'>{_PAGE_STYLE}</head>" \
+               "<body><div class='spin'></div><p>Avvio di GrabMedia…</p></body></html>"
+
+
+def error_html(message: str) -> str:
+    import html
+
+    log_path = html.escape(str(data_dir() / "grabmedia.log"))
+    return (f"<!doctype html><html><head><meta charset='utf-8'>{_PAGE_STYLE}</head><body>"
+            "<h1>GrabMedia non è riuscito ad avviarsi</h1>"
+            f"<p>{html.escape(message)}</p><p>Dettagli nel file {log_path}</p></body></html>")
+
+
+SMOKE_CHECK_JS = "window.__grabmediaReady === true && window.__grabmediaApi === true"
+SMOKE_INFO_JS = """JSON.stringify({
+  title: document.title,
+  mode: (document.querySelector('#mode .on') || {dataset: {}}).dataset.mode || null,
+  folder: (document.getElementById('folder-label') || {}).textContent || null,
+  empty_state: !!document.getElementById('empty') && !document.getElementById('empty').classList.contains('hidden'),
+  width: window.innerWidth, height: window.innerHeight
+})"""
+
+
+def _take_screenshot(path: str) -> None:
+    """Fotografia dello schermo per la prova della finestra (solo con GRABMEDIA_SMOKE_SCREENSHOT)."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["screencapture", "-x", path], timeout=20, check=False)
+        elif sys.platform == "win32":
+            script = (
+                "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
+                "$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;"
+                "$i=New-Object System.Drawing.Bitmap $b.Width,$b.Height;"
+                "$g=[System.Drawing.Graphics]::FromImage($i);$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);"
+                f"$i.Save('{path}')"
+            )
+            subprocess.run(["powershell", "-NoProfile", "-Command", script], timeout=30, check=False,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _smoke_check(window, timeout: float = 90.0) -> int:
+    """Aspetta che l'interfaccia sia pronta e collegata al programma, stampa un JSON."""
+    import json
+
+    report: dict = {"window": True, "app_ready": False}
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if window.evaluate_js(SMOKE_CHECK_JS) is True:
+                report["app_ready"] = True
+                break
+        except Exception as exc:  # noqa: BLE001 - pagina non ancora caricata
+            report["last_error"] = f"{type(exc).__name__}: {exc}"
+        time.sleep(0.5)
+    if report["app_ready"]:
+        report.pop("last_error", None)
+        try:
+            report.update(json.loads(window.evaluate_js(SMOKE_INFO_JS)))
+        except Exception as exc:  # noqa: BLE001
+            report["info_error"] = f"{type(exc).__name__}: {exc}"
+        spec = os.environ.get("GRABMEDIA_SMOKE_DOWNLOAD", "")
+        if spec:
+            report["download"] = _smoke_download(window, spec)
+        shot = os.environ.get("GRABMEDIA_SMOKE_SCREENSHOT")
+        if shot:
+            time.sleep(1.0)
+            _take_screenshot(shot)
+            report["screenshot"] = shot if Path(shot).is_file() else None
+    print(json.dumps(report, ensure_ascii=False), flush=True)
+    download_ok = report.get("download", {}).get("ok", True)
+    return 0 if report["app_ready"] and download_ok else 1
+
+
+def _smoke_download(window, spec: str, timeout: float = 300.0) -> dict:
+    """Usa l'interfaccia come una persona (``audio|URL`` o ``video|URL``): sceglie
+    il tipo, scrive il link, preme Scarica, aspetta la fine e controlla il file."""
+    import json
+
+    mode, _, url = spec.partition("|")
+    mode = "video" if mode.strip() == "video" else "audio"
+    result: dict = {"mode": mode, "url": url.strip(), "ok": False}
+    window.evaluate_js(
+        "(() => {"
+        f" document.querySelector('#mode [data-mode=\"{mode}\"]').click();"
+        " const u = document.getElementById('url');"
+        f" u.value = {json.dumps(url.strip())};"
+        " u.dispatchEvent(new Event('input'));"
+        " document.getElementById('go').click();"
+        " return true; })()"
+    )
+    deadline = time.monotonic() + timeout
+    item: dict = {}
+    while time.monotonic() < deadline:
+        time.sleep(1.0)
+        try:
+            items = json.loads(window.evaluate_js("JSON.stringify(window.__grabmediaItems())") or "[]")
+        except Exception:  # noqa: BLE001
+            continue
+        item = items[0] if items else {}
+        if item.get("state") in ("done", "partial", "failed"):
+            break
+    result.update(state=item.get("state"), title=item.get("title"), error=item.get("error") or None,
+                  files=item.get("files") or [])
+    files = [Path(f) for f in result["files"]]
+    result["file_exists"] = bool(files) and all(f.is_file() for f in files)
+    result["in_folder"] = bool(files) and all(
+        f.resolve().is_relative_to((video_dir() if mode == "video" else music_dir()).resolve()) for f in files)
+    result["reveal_button"] = bool(window.evaluate_js(
+        "!!document.querySelector('#list .row .icon-btn[aria-label^=\"Mostra\"]')"))
+    result["ok"] = result["state"] == "done" and result["file_exists"] and result["in_folder"] \
+        and result["reveal_button"]
+    return result
+
+
+def native_engine() -> str:
+    """Motore della finestra nativa disponibile; solleva un errore se non c'è."""
+    import webview  # noqa: F401
+
+    if sys.platform == "win32":
+        import webview.platforms.winforms as winforms
+
+        if winforms.renderer != "edgechromium":
+            raise RuntimeError(f"motore '{winforms.renderer}' non adatto: manca Microsoft Edge WebView2")
+        return "edgechromium"
+    if sys.platform == "darwin":
+        import webview.platforms.cocoa  # noqa: F401
+
+        return "cocoa"
+    return "default"
+
+
+def run_app(backend: Backend, *, smoke: bool = False) -> int:
+    """Finestra nativa con l'interfaccia da app. Se il motore web manca: finestra di riserva."""
+    import logging
+
+    log = logging.getLogger("grabmedia.desktop")
+    try:
+        engine = native_engine()
+        import webview
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Finestra nativa non disponibile (%s): uso la finestra semplice + browser", exc)
+        if smoke:
+            print(f'{{"window": false, "error": "{type(exc).__name__}"}}', flush=True)
+            return 1
+        run_tk_gui(backend)
+        return 0
+
+    api = DesktopApi(backend.url)
+    threading.Thread(target=lambda: _start_quietly(backend), daemon=True, name="avvio").start()
+    dark = system_dark_mode()
+    window = webview.create_window(
+        APP_NAME, html=LOADING_HTML, js_api=api,
+        width=820, height=600, min_size=(620, 460),
+        background_color="#1C1C1E" if dark else "#F5F5F7", text_select=True,
+    )
+    api._window = window
+    result = {"code": 0}
+
+    def boot() -> None:
+        if not backend.wait_ready(timeout=120):
+            window.load_html(error_html(backend.error or "il server interno non risponde"))
+            if smoke:
+                print('{"window": true, "app_ready": false, "error": "backend"}', flush=True)
+                result["code"] = 1
+                window.destroy()
+            return
+        window.load_url(backend.url + "/app")
+        if smoke:
+            result["code"] = _smoke_check(window)
+            window.destroy()
+
+    try:
+        webview.start(boot, private_mode=True, gui="edgechromium" if engine == "edgechromium" else None)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("La finestra nativa si è chiusa con un errore")
+        result["code"] = 1
+        if smoke:
+            print(f'{{"window": false, "error": "{type(exc).__name__}"}}', flush=True)
+    finally:
+        backend.stop()
+    return result["code"]
+
+
+def _start_quietly(backend: Backend) -> None:
+    try:
+        backend.start()
+    except Exception:  # noqa: BLE001 - già registrato in backend.error e mostrato nella finestra
+        pass
+
+
+# --------------------------------------------------------- finestra di riserva
+def run_tk_gui(backend: Backend) -> None:
     import tkinter as tk
     from tkinter import ttk
 
@@ -543,8 +957,10 @@ def main(argv: list[str] | None = None) -> int:
     backend = Backend(port)
     if mode == "nogui":
         return run_headless(backend)
-    run_gui(backend)
-    return 0
+    if mode == "tk":
+        run_tk_gui(backend)
+        return 0
+    return run_app(backend, smoke=mode == "guismoke")
 
 
 def hard_exit(code: int) -> None:

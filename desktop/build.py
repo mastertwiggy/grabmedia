@@ -44,7 +44,24 @@ PROJECT_PACKAGES = ("sources", "core", "app")
 COLLECT_SUBMODULES = ("rq", "uvicorn", "fakeredis")
 COLLECT_DATA = ("fakeredis",)
 COLLECT_ALL = ("yt_dlp_ejs",)  # script JS per le firme di YouTube
-EXCLUDE = ("pytest", "vcr", "httpx", "IPython", "matplotlib", "numpy")
+EXCLUDE = ("pytest", "vcr", "httpx", "IPython", "matplotlib", "numpy",
+           # motori della finestra che non usiamo (pywebview li importa solo se scelti)
+           "PyQt5", "PyQt6", "PySide2", "PySide6", "qtpy", "gi", "cefpython3")
+ASSETS = DESKTOP / "assets"
+
+
+def window_modules() -> list[str]:
+    """Moduli del motore della finestra nativa per il sistema su cui si costruisce."""
+    if sys.platform == "win32":
+        return ["webview.platforms.winforms", "webview.platforms.edgechromium"]
+    if sys.platform == "darwin":
+        return ["webview.platforms.cocoa"]
+    return []
+
+
+def icon_path() -> Path:
+    """Icona: griglia Apple su macOS, a tutta superficie su Windows (PyInstaller la converte)."""
+    return ASSETS / ("icon-mac.png" if sys.platform == "darwin" else "icon-win.png")
 
 
 class BuildError(RuntimeError):
@@ -123,7 +140,11 @@ def pyinstaller_args(tools: dict[str, Path]) -> list[str]:
         "--specpath", str(BUILD_DIR),
         "--paths", str(ROOT),
         "--add-data", f"{ROOT / 'frontend' / 'index.html'}{sep}frontend",
+        "--add-data", f"{ROOT / 'frontend' / 'app.html'}{sep}frontend",
+        "--icon", str(icon_path()),
     ]
+    for module in window_modules():
+        args += ["--hidden-import", module]
     for path in tools.values():
         args += ["--add-binary", f"{path}{sep}bin"]
     for module in project_modules():

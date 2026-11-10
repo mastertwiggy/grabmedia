@@ -242,6 +242,11 @@ def test_backend_is_ready_only_when_its_own_server_started():
         assert backend.ready() is False and "occupata" in backend.error
         assert backend.wait_ready(timeout=1) is False
 
+    # thread creato ma non ancora avviato: "sta partendo", non "morto" (falso errore visto davvero)
+    backend = gd.Backend(port=1)
+    backend._server, backend._thread = types.SimpleNamespace(started=False), threading.Thread(target=lambda: None)
+    assert backend.ready() is False and backend.error is None
+
     backend = gd.Backend(port=1)
     running = threading.Thread(target=time.sleep, args=(0.5,), daemon=True)
     running.start()
@@ -388,9 +393,223 @@ def test_desktop_workflow_is_valid_and_tests_the_package():
     script = "\n".join(step.get("run", "") for step in build_job["steps"])
     assert "desktop/build.py" in script and "--self-check" in script and "--no-gui" in script
     assert '"redis":true' in script and '"auth_required":false' in script
-    names = [step.get("uses", "").split("@")[0] for step in build_job["steps"]]
-    assert names.index("actions/upload-artifact") == len(names) - 1  # si carica solo dopo la prova
+    assert "--gui-smoke" in script and '"app_ready": true' in script and "/app" in script
+    steps = build_job["steps"]
+    last = steps[-1]
+    # il pacchetto si carica per ultimo, solo se tutte le prove (finestra compresa) sono passate
+    assert last["uses"].startswith("actions/upload-artifact") and last["with"]["name"] == "${{ matrix.zip }}"
+    assert "if" not in last
+    names = [step.get("name", "") for step in steps]
+    assert names.index("Prova del pacchetto") < names.index("Prova della finestra") < len(steps) - 1
+    photo = next(step for step in steps if step.get("name") == "Foto della finestra")
+    assert photo["if"] == "always()"  # la foto serve soprattutto quando la prova fallisce
     assert data["jobs"]["release"]["permissions"] == {"contents": "write"}  # scrittura solo dove serve
+
+
+# ------------------------------------------------------------ finestra nativa
+class FakeWindow:
+    def __init__(self, url: str | None) -> None:
+        self.url = url
+
+    def get_current_url(self):
+        return self.url
+
+
+def make_api(monkeypatch, tmp_path: Path, url: str | None = "http://127.0.0.1:4321/app") -> "gd.DesktopApi":
+    monkeypatch.setenv("GRABMEDIA_MUSIC_DIR", str(tmp_path / "musica"))
+    monkeypatch.setenv("GRABMEDIA_VIDEO_DIR", str(tmp_path / "video"))
+    monkeypatch.setenv("GRABMEDIA_DATA_DIR", str(tmp_path / "dati"))
+    monkeypatch.setenv("DOWNLOAD_DIR", str(tmp_path / "dati" / "cache"))
+    api = gd.DesktopApi("http://127.0.0.1:4321")
+    api._window = FakeWindow(url)
+    return api
+
+
+@pytest.mark.parametrize("argv, mode", [(["--gui-smoke"], "guismoke"), (["--tk"], "tk")])
+def test_window_modes(argv, mode):
+    assert gd.mode_from_argv(argv) == mode
+
+
+def test_video_dir_and_folder_labels(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("GRABMEDIA_VIDEO_DIR", str(tmp_path / "v"))
+    assert gd.video_dir() == tmp_path / "v"
+    monkeypatch.delenv("GRABMEDIA_VIDEO_DIR")
+    monkeypatch.setattr(gd.sys, "platform", "darwin")
+    assert gd.video_dir() == Path.home() / "Movies" / "GrabMedia"
+    monkeypatch.setattr(gd.sys, "platform", "win32")
+    assert gd.video_dir() == Path.home() / "Videos" / "GrabMedia"
+    home = Path.home()
+    assert gd.folder_label(home / "Music" / "GrabMedia") == "Musica › GrabMedia"
+    assert gd.folder_label(home / "Movies" / "GrabMedia") == "Filmati › GrabMedia"
+    assert gd.folder_label(home / "Videos" / "GrabMedia") == "Video › GrabMedia"
+    assert gd.folder_label(tmp_path / "altra" / "cartella") == "altra › cartella"
+
+
+def test_unique_path(tmp_path: Path):
+    target = tmp_path / "video.mp4"
+    assert gd.unique_path(target) == target
+    target.write_bytes(b"x")
+    assert gd.unique_path(target).name == "video (2).mp4"
+    (tmp_path / "video (2).mp4").write_bytes(b"x")
+    assert gd.unique_path(target).name == "video (3).mp4"
+
+
+def test_desktop_api_refuses_other_pages(monkeypatch, tmp_path: Path):
+    """Se la finestra mostrasse un altro sito, quel sito non deve poter usare il ponte."""
+    for url in ("https://example.com/", "http://127.0.0.1:9999/app", None, "http://127.0.0.1:4321.evil.test/"):
+        api = make_api(monkeypatch, tmp_path, url)
+        assert api.folders() == {} and api.paste() == "" and api.open_folder("music") is False
+        assert api.reveal(str(tmp_path)) is False and "error" in api.save_job("a" * 32)
+    api = gd.DesktopApi("http://127.0.0.1:4321")
+    assert api.folders() == {}  # nessuna finestra collegata
+
+
+def test_desktop_api_folders_and_reveal(monkeypatch, tmp_path: Path):
+    api = make_api(monkeypatch, tmp_path)
+    shown: list[Path] = []
+    monkeypatch.setattr(gd, "reveal_in_file_manager", shown.append)
+    info = api.folders()
+    assert info["music"] == str(tmp_path / "musica") and info["video"] == str(tmp_path / "video")
+    assert info["music_label"] == f"{tmp_path.name} › musica" and info["platform"] in ("mac", "windows", "linux")
+    song = tmp_path / "musica" / "Artista" / "brano.mp3"
+    song.parent.mkdir(parents=True)
+    song.write_bytes(b"x")
+    assert api.reveal(str(song)) is True and shown == [song.resolve()]
+    outside = tmp_path / "segreto.txt"
+    outside.write_bytes(b"x")
+    assert api.reveal(str(outside)) is False                                  # fuori dalle cartelle di GrabMedia
+    assert api.reveal(str(tmp_path / "musica" / ".." / "segreto.txt")) is False  # niente scorciatoie con ".."
+    assert api.reveal(str(tmp_path / "musica" / "manca.mp3")) is False
+    assert api.reveal(None) is False and api.reveal("") is False
+    assert shown == [song.resolve()]
+
+
+def test_desktop_api_save_job_copies_video_once(monkeypatch, tmp_path: Path):
+    from app import database
+
+    api = make_api(monkeypatch, tmp_path)
+    cache = tmp_path / "dati" / "cache" / ("b" * 32)
+    cache.mkdir(parents=True)
+    clip = cache / "Il mio video.mp4"
+    clip.write_bytes(b"video")
+    jobs = {"b" * 32: {"status": "completed", "filepath": str(clip)},
+            "c" * 32: {"status": "running", "filepath": ""},
+            "d" * 32: {"status": "completed", "filepath": str(tmp_path / "segreto.txt")}}
+    (tmp_path / "segreto.txt").write_bytes(b"x")
+    monkeypatch.setattr(database, "get_job", lambda job_id: jobs.get(job_id))
+    (tmp_path / "video").mkdir()
+    (tmp_path / "video" / "Il mio video.mp4").write_bytes(b"vecchio")  # nome già usato: non va sovrascritto
+
+    first = api.save_job("b" * 32)
+    assert Path(first["path"]).name == "Il mio video (2).mp4" and Path(first["path"]).read_bytes() == b"video"
+    assert api.save_job("b" * 32) == first  # una volta sola, niente copie doppie
+    assert (tmp_path / "video" / "Il mio video.mp4").read_bytes() == b"vecchio"
+    assert "non ancora finito" in api.save_job("c" * 32)["error"]
+    assert "non è più disponibile" in api.save_job("d" * 32)["error"]  # fuori dalla cache: rifiutato
+    assert "sconosciuto" in api.save_job("../../etc")["error"]
+    assert "sconosciuto" in api.save_job(42)["error"]
+
+
+def test_read_clipboard_never_raises(monkeypatch):
+    import types
+
+    monkeypatch.setattr(gd.sys, "platform", "darwin")
+    monkeypatch.setattr(gd.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout="  https://x.test/a \n"))
+    assert gd.read_clipboard() == "https://x.test/a"
+
+    def broken(*a, **k):
+        raise OSError("niente pbpaste")
+
+    monkeypatch.setattr(gd.subprocess, "run", broken)
+    assert gd.read_clipboard() == ""
+
+
+def test_error_page_escapes_the_message():
+    page = gd.error_html("<script>alert(1)</script>")
+    assert "<script>alert" not in page and "&lt;script&gt;" in page and "grabmedia.log" in page
+    assert "Avvio di GrabMedia" in gd.LOADING_HTML
+
+
+class SmokeWindow:
+    """Finestra finta per la prova automatica: risponde come la pagina vera."""
+
+    def __init__(self, items, reveal=True):
+        self.items, self.reveal, self.scripts = items, reveal, []
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+        if "__grabmediaItems" in script:
+            return json.dumps(self.items)
+        if "aria-label" in script:
+            return self.reveal
+        return True
+
+
+def test_smoke_download_checks_the_real_file(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("GRABMEDIA_MUSIC_DIR", str(tmp_path / "musica"))
+    monkeypatch.setenv("GRABMEDIA_VIDEO_DIR", str(tmp_path / "video"))
+    monkeypatch.setattr(gd.time, "sleep", lambda s: None)
+    song = tmp_path / "musica" / "brano.mp3"
+    song.parent.mkdir()
+    song.write_bytes(b"x")
+    window = SmokeWindow([{"state": "done", "title": "Brano", "files": [str(song)], "error": ""}])
+    result = gd._smoke_download(window, "audio|https://www.youtube.com/watch?v=abc", timeout=5)
+    assert result["ok"] is True and result["in_folder"] and result["file_exists"] and result["reveal_button"]
+    assert 'data-mode=\\"audio\\"' in window.scripts[0] or 'data-mode="audio"' in window.scripts[0]
+    assert '"https://www.youtube.com/watch?v=abc"' in window.scripts[0]  # link passato come stringa JSON
+    # file finito nella cartella sbagliata (audio nella cartella video): non va bene
+    result = gd._smoke_download(SmokeWindow([{"state": "done", "files": [str(song)]}]), "video|https://x.test/v", timeout=5)
+    assert result["ok"] is False and result["in_folder"] is False
+    # download fallito o senza pulsante "Mostra": non va bene
+    assert gd._smoke_download(SmokeWindow([{"state": "failed", "files": []}]), "audio|u", timeout=5)["ok"] is False
+    assert gd._smoke_download(SmokeWindow([{"state": "done", "files": [str(song)]}], reveal=False),
+                              "audio|u", timeout=5)["ok"] is False
+
+
+def test_desktop_interface_is_served_and_self_contained():
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    main = pytest.importorskip("app.main")
+    response = TestClient(main.app).get("/app")
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-cache"
+    page = response.text
+    assert "<title>GrabMedia</title>" in page and "window.__grabmediaReady = true" in page
+    # nessuna risorsa esterna: il programma deve funzionare anche offline
+    import re
+
+    external = [u for u in re.findall(r'(?:src|href)="(https?://[^"]+)"', page)]
+    assert external == [] and "<script src" not in page and "@import" not in page
+    # contratto con le API: audio sempre MP3 via /audio, video via /download e salvataggio nel programma
+    assert 'format: "mp3_" + item.bitrate' in page and '"/audio"' in page and '"/download"' in page
+    assert "api.save_job(item.remoteId)" in page and "api.reveal(item.files[0])" in page
+    assert "prefers-color-scheme: dark" in page and "-apple-system" in page
+    assert "Mostra nel Finder" in page and "Mostra nella cartella" in page
+
+
+def test_build_includes_window_interface_and_icon(monkeypatch, tmp_path: Path):
+    import build
+
+    tools = {"ffmpeg": tmp_path / "ffmpeg", "deno": tmp_path / "deno"}
+    for platform, modules, icon in (("win32", ["webview.platforms.winforms", "webview.platforms.edgechromium"], "icon-win.png"),
+                                    ("darwin", ["webview.platforms.cocoa"], "icon-mac.png")):
+        monkeypatch.setattr(build.sys, "platform", platform)
+        args = build.pyinstaller_args(tools)
+        pairs = list(zip(args, args[1:]))
+        for module in modules:
+            assert ("--hidden-import", module) in pairs
+        assert ("--icon", str(build.ASSETS / icon)) in pairs
+        assert ("--add-data", f"{ROOT / 'frontend' / 'app.html'}{os.pathsep}frontend") in pairs
+        assert ("--exclude-module", "PyQt6") in pairs
+    monkeypatch.undo()
+
+
+@pytest.mark.parametrize("name", ["icon-mac.png", "icon-win.png"])
+def test_icons_are_square_1024_png(name):
+    data = (ROOT / "desktop" / "assets" / name).read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    assert (width, height) == (1024, 1024)
 
 
 # ------------------------------------------------------- avvio reale, senza finestra

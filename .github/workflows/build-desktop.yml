@@ -105,6 +105,33 @@ jobs:
           grep -q '"auth_required":false' <<<"$SESSION"
           curl -fsS -m 10 -o /dev/null http://127.0.0.1:8765/
           echo "pagina del sito: ok"
+          curl -fsS -m 10 -o /dev/null http://127.0.0.1:8765/app
+          echo "interfaccia del programma: ok"
+
+      - name: Prova della finestra
+        # apre la finestra nativa vera, controlla che l'interfaccia sia pronta e
+        # collegata al programma, scatta una foto dello schermo e si chiude da sola
+        env:
+          GRABMEDIA_DATA_DIR: ${{ runner.temp }}/grabmedia-dati-finestra
+          GRABMEDIA_MUSIC_DIR: ${{ runner.temp }}/grabmedia-musica
+          GRABMEDIA_SMOKE_SCREENSHOT: ${{ runner.temp }}/finestra.png
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            EXE="desktop/dist/GrabMedia.app/Contents/MacOS/GrabMedia"
+          else
+            EXE="desktop/dist/GrabMedia/GrabMedia.exe"
+          fi
+          "$EXE" --gui-smoke | tee "$RUNNER_TEMP/finestra.json"
+          grep -q '"app_ready": true' "$RUNNER_TEMP/finestra.json"
+
+      - name: Foto della finestra
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finestra-${{ matrix.zip }}
+          path: ${{ runner.temp }}/finestra.png
+          if-no-files-found: ignore
+          retention-days: 14
 
       - uses: actions/upload-artifact@v4
         with:

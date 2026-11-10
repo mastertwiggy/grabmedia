@@ -37,6 +37,7 @@ log = logging.getLogger("grabmedia.api")
 JOB_ID_PATTERN = r"^[0-9a-f]{32}$"
 FINAL_STATES = {models.JobStatus.COMPLETED.value, models.JobStatus.FAILED.value}
 FRONTEND_INDEX = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
+FRONTEND_APP = FRONTEND_INDEX.with_name("app.html")
 WS_POLL_INTERVAL = 0.5
 
 
@@ -216,6 +217,14 @@ async def index():
         # no-cache: il browser ricontrolla sempre (ETag), così dopo un aggiornamento non resta la pagina vecchia
         return FileResponse(FRONTEND_INDEX, media_type="text/html", headers={"Cache-Control": "no-cache"})
     raise HTTPException(status_code=404, detail="Frontend non trovato")
+
+
+@app.get("/app", include_in_schema=False)
+async def desktop_app():
+    """Interfaccia del programma desktop (finestra nativa), stessa API del sito."""
+    if FRONTEND_APP.is_file():
+        return FileResponse(FRONTEND_APP, media_type="text/html", headers={"Cache-Control": "no-cache"})
+    raise HTTPException(status_code=404, detail="Interfaccia del programma non trovata")
 
 
 @app.get("/health", response_model=models.HealthResponse)

@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>GrabMedia</title>
+<style>
+  :root {
+    --window: #f5f5f7;
+    --group: #ffffff;
+    --label: #1d1d1f;
+    --secondary: #6e6e73;
+    --tertiary: #aeaeb2;
+    --separator: rgba(60, 60, 67, .16);
+    --fill: rgba(120, 120, 128, .12);
+    --fill-strong: rgba(120, 120, 128, .2);
+    --segment-on: #ffffff;
+    --accent: #007aff;
+    --accent-press: #0062cc;
+    --accent-soft: rgba(0, 122, 255, .32);
+    --red: #ff3b30;
+    --orange: #c93400;
+    --green: #34c759;
+    --field: #ffffff;
+    --field-border: rgba(0, 0, 0, .1);
+    --shadow: 0 0 0 .5px rgba(0, 0, 0, .05), 0 1px 3px rgba(0, 0, 0, .07);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --window: #1c1c1e;
+      --group: #2c2c2e;
+      --label: #f5f5f7;
+      --secondary: #98989d;
+      --tertiary: #636366;
+      --separator: rgba(84, 84, 88, .55);
+      --fill: rgba(120, 120, 128, .24);
+      --fill-strong: rgba(120, 120, 128, .32);
+      --segment-on: #636366;
+      --accent: #0a84ff;
+      --accent-press: #3a9bff;
+      --accent-soft: rgba(10, 132, 255, .4);
+      --red: #ff453a;
+      --orange: #ff9f0a;
+      --green: #30d158;
+      --field: rgba(255, 255, 255, .05);
+      --field-border: rgba(255, 255, 255, .1);
+      --shadow: 0 0 0 .5px rgba(255, 255, 255, .06), 0 1px 3px rgba(0, 0, 0, .3);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--window);
+    color: var(--label);
+    font: 13px/1.38 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none; user-select: none;
+    cursor: default;
+    overflow: hidden;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: default; }
+  svg { display: block; }
+  .hidden { display: none !important; }
+
+  .app { height: 100%; display: flex; flex-direction: column; position: relative; }
+
+  /* ------------------------------------------------ barra in alto */
+  .toolbar { display: flex; gap: 10px; align-items: center; padding: 18px 20px 10px; }
+  .field {
+    flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; gap: 8px;
+    padding: 0 6px 0 11px; border-radius: 9px;
+    background: var(--field); box-shadow: inset 0 0 0 1px var(--field-border), 0 .5px 1px rgba(0, 0, 0, .04);
+    transition: box-shadow .15s;
+  }
+  .field:focus-within { box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3.5px var(--accent-soft); }
+  .field svg { width: 15px; height: 15px; color: var(--secondary); flex: none; }
+  .field input {
+    flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent;
+    font-size: 13px; -webkit-user-select: text; user-select: text;
+  }
+  .field input::placeholder { color: var(--tertiary); }
+  .field-btn {
+    flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 6px;
+    background: var(--fill); color: var(--label); font-size: 12px;
+  }
+  .field-btn:hover { background: var(--fill-strong); }
+  .btn {
+    height: 34px; padding: 0 20px; border: 0; border-radius: 999px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  }
+  .btn svg { width: 15px; height: 15px; }
+  .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.primary:active { background: var(--accent-press); }
+  .btn:disabled { opacity: .45; filter: none; }
+
+  /* ------------------------------------------------ opzioni */
+  .options { display: flex; align-items: center; gap: 10px; padding: 2px 20px 12px; flex-wrap: wrap; }
+  .segmented { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--fill); }
+  .segmented button {
+    height: 26px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent;
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--label);
+  }
+  .segmented button svg { width: 13px; height: 13px; }
+  .segmented button.on { background: var(--segment-on); box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); font-weight: 500; }
+  .segmented button:disabled { opacity: .35; }
+  .popup { position: relative; display: inline-flex; }
+  .popup select {
+    -webkit-appearance: none; appearance: none; height: 30px; padding: 0 30px 0 12px;
+    border: 0; border-radius: 8px; background: var(--group); box-shadow: var(--shadow); font-size: 12.5px; outline: 0;
+  }
+  .popup select:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft); }
+  .popup svg { position: absolute; right: 10px; top: 50%; width: 10px; height: 10px; margin-top: -5px; color: var(--secondary); pointer-events: none; }
+  .spacer { flex: 1; }
+  .link-btn {
+    height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent;
+    color: var(--secondary); display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  }
+  .link-btn svg { width: 14px; height: 14px; }
+  .link-btn:hover { background: var(--fill); color: var(--label); }
+
+  .note { margin: -4px 20px 10px; font-size: 12px; color: var(--secondary); display: flex; gap: 6px; align-items: flex-start; }
+  .note svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+  .note.error { color: var(--red); }
+
+  /* ------------------------------------------------ elenco */
+  .list-wrap { flex: 1; overflow-y: auto; padding: 4px 20px 16px; }
+  .section-title { font-size: 11px; font-weight: 600; color: var(--secondary); text-transform: uppercase; letter-spacing: .04em; margin: 6px 4px 6px; }
+  .group { background: var(--group); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .row { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; min-height: 58px; }
+  .row + .row::before { content: ""; position: absolute; top: 0; left: 62px; right: 0; height: 1px; transform: scaleY(.5); background: var(--separator); }
+  .thumb { flex: none; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+  .thumb svg { width: 18px; height: 18px; }
+  .thumb.audio { background: linear-gradient(160deg, #ff6482, #ff2d55); }
+  .thumb.video { background: linear-gradient(160deg, #7d7aff, #5e5ce6); }
+  .text { flex: 1; min-width: 0; }
+  .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { font-size: 12px; color: var(--secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .sub.error { color: var(--red); white-space: normal; }
+  .sub.warn { color: var(--orange); }
+  .hint { font-size: 11px; color: var(--secondary); margin-top: 3px; white-space: normal; word-break: break-word;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+          -webkit-user-select: text; user-select: text; }
+  .bar { height: 4px; border-radius: 2px; background: var(--fill); margin-top: 7px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--accent); transition: width .35s ease; }
+  .bar.indeterminate i { width: 30% !important; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-110%); } to { transform: translateX(340%); } }
+  .actions { flex: none; display: flex; align-items: center; gap: 4px; }
+  .icon-btn {
+    width: 28px; height: 28px; border: 0; border-radius: 999px; background: transparent;
+    display: grid; place-items: center; color: var(--secondary);
+  }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .icon-btn:hover { background: var(--fill); color: var(--label); }
+  .icon-btn.text { width: auto; padding: 0 10px; font-size: 12px; color: var(--accent); }
+  .status-ok { color: var(--green); width: 18px; height: 18px; }
+  .status-warn { color: var(--orange); width: 18px; height: 18px; }
+  .status-err { color: var(--red); width: 18px; height: 18px; }
+
+  .empty { height: 100%; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--secondary); padding-bottom: 30px; }
+  .empty svg { width: 46px; height: 46px; color: var(--tertiary); margin-bottom: 12px; }
+  .empty h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--secondary); }
+  .empty p { margin: 0; font-size: 12.5px; max-width: 320px; color: var(--tertiary); }
+
+  .footer { display: flex; align-items: center; gap: 8px; padding: 0 20px 12px; min-height: 30px; font-size: 11.5px; color: var(--secondary); }
+
+  .drop-overlay {
+    position: absolute; inset: 8px; border-radius: 14px; border: 2px dashed var(--accent);
+    background: color-mix(in srgb, var(--window) 82%, transparent);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 8px;
+    color: var(--accent); font-size: 15px; font-weight: 600; pointer-events: none;
+  }
+  .drop-overlay svg { width: 34px; height: 34px; }
+  .app.dragging .drop-overlay { display: flex; }
+
+  .list-wrap::-webkit-scrollbar { width: 10px; }
+  .list-wrap::-webkit-scrollbar-thumb { background: var(--fill-strong); border-radius: 10px; border: 3px solid var(--window); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10.5 5 5 5-5"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3.2v11.3a3.3 3.3 0 1 1-2-3V7.6l-8 1.9v7.1a3.3 3.3 0 1 1-2-3V6.3c0-.5.3-.9.8-1l10-2.4a1 1 0 0 1 1.2 1Z"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v2h2V6H5Zm12 0v2h2V6h-2ZM5 10v4h2v-4H5Zm12 0v4h2v-4h-2ZM5 16v2h2v-2H5Zm12 0v2h2v-2h-2ZM9 6v12h6V6H9Z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 3.8 2.5 2.5 2.5-2.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6l2 2.2h7.4A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm4.3 6.3-5.6 5.7-2.9-2.9-1.4 1.4 4.3 4.3 7-7-1.4-1.5Z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm-1 5v7h2V7h-2Zm0 9v2h2v-2h-2Z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.2"/></symbol>
+  <symbol id="i-tray" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M24 7v20"/><path d="m15.5 19 8.5 8.5 8.5-8.5"/><path d="M6 29h9l3 5h12l3-5h9v8a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4v-8Z"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <header class="toolbar">
+    <div class="field">
+      <svg><use href="#i-link"/></svg>
+      <input id="url" type="text" placeholder="Incolla un link da YouTube, Spotify, SoundCloud…" autocomplete="off" spellcheck="false" aria-label="Link da scaricare">
+      <button id="paste" class="field-btn" type="button">Incolla</button>
+    </div>
+    <button id="go" class="btn primary" type="button"><svg><use href="#i-down"/></svg>Scarica</button>
+  </header>
+
+  <div class="options">
+    <div class="segmented" id="mode" role="radiogroup" aria-label="Tipo di download">
+      <button type="button" data-mode="audio" class="on" role="radio" aria-checked="true"><svg><use href="#i-note"/></svg>Audio</button>
+      <button type="button" data-mode="video" role="radio" aria-checked="false"><svg><use href="#i-film"/></svg>Video</button>
+    </div>
+    <label class="popup" id="bitrate-wrap" title="Qualità dell'MP3">
+      <select id="bitrate" aria-label="Qualità MP3">
+        <option value="128">MP3 · 128 kbps</option>
+        <option value="192" selected>MP3 · 192 kbps</option>
+        <option value="256">MP3 · 256 kbps</option>
+        <option value="320">MP3 · 320 kbps</option>
+      </select>
+      <svg><use href="#i-chevron"/></svg>
+    </label>
+    <label class="popup hidden" id="quality-wrap" title="Qualità del video">
+      <select id="quality" aria-label="Qualità video">
+        <option value="best" selected>Migliore qualità</option>
+        <option value="4K">4K</option>
+        <option value="1080p">1080p</option>
+        <option value="720p">720p</option>
+      </select>
+      <svg><use href="#i-chevron"/></svg>
+    </label>
+    <span class="spacer"></span>
+    <button id="folder" class="link-btn" type="button"><svg><use href="#i-folder"/></svg><span id="folder-label">Musica › GrabMedia</span></button>
+  </div>
+
+  <p id="note" class="note hidden"><svg><use href="#i-info"/></svg><span id="note-text"></span></p>
+
+  <main class="list-wrap" id="list-wrap">
+    <div id="empty" class="empty">
+      <svg><use href="#i-tray"/></svg>
+      <h2>Nessun download</h2>
+      <p>Incolla un link e premi Scarica. Puoi anche trascinarlo qui dentro.</p>
+    </div>
+    <div id="section" class="hidden">
+      <div class="section-title">Download</div>
+      <section id="list" class="group" aria-live="polite"></section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span id="count"></span>
+    <span class="spacer"></span>
+    <button id="clear" class="link-btn hidden" type="button">Rimuovi completati</button>
+  </footer>
+
+  <div class="drop-overlay"><svg><use href="#i-down"/></svg>Rilascia il link qui</div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const urlInput = $("url"), goBtn = $("go"), list = $("list");
+
+  // Siti che hanno solo audio: lì "Video" non ha senso
+  const AUDIO_ONLY = /(^|\.)(spotify\.com|spotify\.link|soundcloud\.com|bandcamp\.com)$/i;
+  const PROVIDERS = { spotify_embed: "Spotify", spotify: "Spotify", youtube: "YouTube", soundcloud: "SoundCloud", bandcamp: "Bandcamp" };
+  const QUALITY = { best: "migliore qualità", "4K": "4K", "1080p": "1080p", "720p": "720p" };
+
+  let api = null;                       // ponte con il programma (finestra nativa); null nel browser
+  let platform = /Mac/i.test(navigator.platform || navigator.userAgent) ? "mac" : "windows";
+  let folders = { music_label: "Musica › GrabMedia", video_label: platform === "mac" ? "Filmati › GrabMedia" : "Video › GrabMedia" };
+  const state = { mode: "audio", items: [] };
+  let seq = 0, timer = null, polling = false, noteTimer = null;
+
+  // ------------------------------------------------------------ utilità
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("grabmedia." + k); return v == null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("grabmedia." + k, v); } catch (e) { /* niente */ } },
+  };
+  function normalizeUrl(raw) {
+    let u = String(raw || "").trim().split(/\s+/)[0] || "";
+    if (u && !/^https?:\/\//i.test(u) && /^[\w-]+(\.[\w-]+)+(\/|$)/.test(u)) u = "https://" + u;
+    return u;
+  }
+  function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
+  function siteName(u) {
+    const h = hostOf(u);
+    if (/spotify/.test(h)) return "Spotify";
+    if (/(^|\.)youtu(\.be|be\.com)$/.test(h)) return "YouTube";
+    if (/soundcloud/.test(h)) return "SoundCloud";
+    if (/bandcamp/.test(h)) return "Bandcamp";
+    return h || "Link";
+  }
+  function describeUrl(u) {
+    const site = siteName(u);
+    let path = ""; try { path = new URL(u).pathname; } catch (e) { /* niente */ }
+    if (/\/playlist|\/sets\//.test(path) || /[?&]list=/.test(u)) return "Playlist " + site;
+    if (/\/album/.test(path)) return "Album " + site;
+    if (/\/track/.test(path)) return "Brano " + site;
+    return site === "YouTube" ? "Video YouTube" : site;
+  }
+  const stripExt = (n) => String(n || "").replace(/\.[a-z0-9]{2,4}$/i, "");
+  function errorText(data, status) {
+    if (data && data.detail) {
+      if (typeof data.detail === "string") return data.detail;
+      if (Array.isArray(data.detail)) {
+        const t = data.detail.map((d) => String(d.msg || "").replace(/^Value error, /, "")).filter(Boolean).join("; ");
+        if (t) return t;
+      }
+    }
+    return "Errore " + status;
+  }
+  function svg(id, cls) {
+    const ns = "http://www.w3.org/2000/svg";
+    const s = document.createElementNS(ns, "svg");
+    if (cls) s.setAttribute("class", cls);
+    const use = document.createElementNS(ns, "use");
+    use.setAttribute("href", "#" + id);
+    s.appendChild(use);
+    return s;
+  }
+  function showNote(text, kind, ms) {
+    const note = $("note");
+    $("note-text").textContent = text;
+    note.classList.toggle("error", kind === "error");
+    note.classList.remove("hidden");
+    clearTimeout(noteTimer);
+    if (ms) noteTimer = setTimeout(hideNote, ms);
+  }
+  function hideNote() { $("note").classList.add("hidden"); }
+
+  // ------------------------------------------------------------ opzioni
+  function setMode(mode, remember) {
+    state.mode = mode;
+    for (const b of document.querySelectorAll("#mode button")) {
+      const on = b.dataset.mode === mode;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    }
+    $("bitrate-wrap").classList.toggle("hidden", mode !== "audio");
+    $("quality-wrap").classList.toggle("hidden", mode !== "video");
+    $("folder-label").textContent = mode === "audio" ? folders.music_label : folders.video_label;
+    if (remember) store.set("mode", mode);
+  }
+  function syncSite() {
+    const url = normalizeUrl(urlInput.value);
+    const host = hostOf(url);
+    const audioOnly = AUDIO_ONLY.test(host);
+    const videoBtn = document.querySelector('#mode [data-mode="video"]');
+    videoBtn.disabled = audioOnly;
+    videoBtn.title = audioOnly ? "Questo sito ha solo audio" : "";
+    if (audioOnly && state.mode === "video") setMode("audio", false);
+    if (!audioOnly && state.mode === "audio" && store.get("mode", "audio") === "video" && !urlInput.value) setMode("video", false);
+    if (/(^|\.)bandcamp\.com$/.test(host)) showNote("Da Bandcamp l'MP3 arriva al massimo a 128 kbps (è ciò che il sito offre gratis).", "info");
+    else if (!$("note").classList.contains("error")) hideNote();
+  }
+
+  // ------------------------------------------------------------ download
+  async function start() {
+    const url = normalizeUrl(urlInput.value);
+    if (!url) { urlInput.focus(); showNote("Incolla prima un link.", "error", 3500); return; }
+    if (!/^https?:\/\//i.test(url) || !hostOf(url)) { showNote("Questo non sembra un link valido.", "error", 4000); return; }
+    hideNote();
+    const kind = AUDIO_ONLY.test(hostOf(url)) ? "audio" : state.mode;
+    const item = {
+      id: ++seq, kind, url, title: describeUrl(url), site: siteName(url),
+      bitrate: $("bitrate").value, quality: $("quality").value,
+      state: "queued", progress: 0, total: 0, done: 0, files: [], failures: [], error: "", hint: "", detail: "",
+    };
+    item.label = kind === "audio" ? "MP3 · " + item.bitrate + " kbps" : "Video · " + QUALITY[item.quality];
+    state.items.unshift(item);
+    urlInput.value = "";
+    syncSite();
+    render();
+    await submit(item);
+  }
+
+  async function submit(item) {
+    Object.assign(item, { state: "queued", progress: 0, error: "", hint: "", files: [], failures: [], remoteId: null });
+    render();
+    try {
+      const audio = item.kind === "audio";
+      const body = audio ? { url: item.url, format: "mp3_" + item.bitrate }
+                         : { url: item.url, format: item.quality, audio_bitrate: 192 };
+      const res = await fetch(audio ? "/audio" : "/download", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errorText(data, res.status));
+      item.remoteId = audio ? data.task_id : data.job_id;
+      ensurePolling();
+    } catch (e) {
+      item.state = "failed";
+      item.error = (e && e.message) || "Il programma non risponde";
+    }
+    render();
+  }
+
+  function ensurePolling() { if (!timer) timer = setInterval(pollAll, 1000); }
+  async function pollAll() {
+    if (polling) return;
+    const active = state.items.filter((i) => i.remoteId && (i.state === "queued" || i.state === "running"));
+    if (!active.length) { clearInterval(timer); timer = null; return; }
+    polling = true;
+    try { await Promise.all(active.map(pollOne)); } finally { polling = false; }
+    render();
+  }
+  async function pollOne(item) {
+    try {
+      if (item.kind === "audio") {
+        const r = await fetch("/audio/" + item.remoteId);
+        if (r.ok) applyTask(item, await r.json());
+      } else {
+        const r = await fetch("/status/" + item.remoteId);
+        if (r.ok) await applyJob(item, await r.json());
+      }
+    } catch (e) { /* riprova al giro dopo */ }
+  }
+
+  function applyTask(item, t) {
+    if (PROVIDERS[t.provider]) item.site = PROVIDERS[t.provider];
+    item.progress = Number(t.progress) || 0;
+    item.total = t.tracks_total || 0;
+    item.done = t.tracks_done || 0;
+    if (t.state === "queued" || t.state === "running") { item.state = t.state; return; }
+    item.files = t.files || [];
+    item.failures = t.failures || [];
+    const names = t.filenames || [];
+    if (!item.files.length) {
+      const first = item.failures[0] || {};
+      item.state = "failed";
+      item.error = t.message || first.message || "Download non riuscito";
+      item.hint = t.hint || first.hint || "";
+      return;
+    }
+    item.state = item.failures.length ? "partial" : "done";
+    item.progress = 100;
+    item.title = names.length === 1 ? stripExt(names[0]) : describeUrl(item.url) + " · " + names.length + " brani";
+  }
+
+  async function applyJob(item, s) {
+    item.progress = parseFloat(s.progress) || 0;
+    if (s.title) item.title = s.title;
+    item.detail = s.detail || "";
+    if (s.status === "queued" || s.status === "running") { item.state = s.status; return; }
+    if (s.status === "failed") { item.state = "failed"; item.error = s.error_message || "Download non riuscito"; return; }
+    if (s.status !== "completed") return;
+    item.progress = 100;
+    item.downloadUrl = s.download_url;
+    if (!api) { item.state = "done"; return; }
+    item.state = "saving";
+    render();
+    try {
+      const r = await api.save_job(item.remoteId);
+      if (r && r.path) { item.files = [r.path]; item.state = "done"; }
+      else { item.state = "failed"; item.error = (r && r.error) || "Impossibile salvare il file"; }
+    } catch (e) {
+      item.state = "failed"; item.error = String((e && e.message) || e);
+    }
+  }
+
+  async function reveal(item) {
+    if (!api || !item.files.length) return;
+    const ok = await api.reveal(item.files[0]).catch(() => false);
+    if (!ok) showNote("Il file non c'è più: forse è stato spostato o cancellato.", "error", 4000);
+  }
+
+  // ------------------------------------------------------------ disegno
+  function subline(item) {
+    const pct = Math.round(item.progress) + "%";
+    switch (item.state) {
+      case "queued": return ["In attesa…", ""];
+      case "running":
+        if (item.kind === "audio") {
+          const which = item.total > 1 ? "Brano " + Math.min(item.done + 1, item.total) + " di " + item.total : "Download in corso";
+          return [which + " · " + pct, ""];
+        }
+        return [(item.detail || "Download in corso") + " · " + pct, ""];
+      case "saving": return ["Salvataggio…", ""];
+      case "done": return [item.label + " · " + item.site, ""];
+      case "partial": {
+        const n = item.failures.length;
+        return [item.label + " · " + n + (n === 1 ? " brano non trovato" : " brani non trovati"), "warn"];
+      }
+      // la frase comprensibile (hint) in evidenza, il dettaglio tecnico sotto in piccolo
+      default: return [item.hint || item.error, "error"];
+    }
+  }
+
+  function actionsFor(item) {
+    const box = document.createElement("div");
+    box.className = "actions";
+    if (item.state === "done" || item.state === "partial") {
+      if (api && item.files.length) {
+        const b = document.createElement("button");
+        b.className = "icon-btn"; b.type = "button";
+        b.title = platform === "mac" ? "Mostra nel Finder" : "Mostra nella cartella";
+        b.setAttribute("aria-label", b.title);
+        b.appendChild(svg("i-search"));
+        b.addEventListener("click", () => reveal(item));
+        box.appendChild(b);
+      } else if (item.downloadUrl) {
+        const a = document.createElement("a");
+        a.className = "icon-btn text"; a.href = item.downloadUrl; a.textContent = "Scarica";
+        box.appendChild(a);
+      }
+      box.appendChild(svg(item.state === "done" ? "i-check" : "i-alert", item.state === "done" ? "status-ok" : "status-warn"));
+    } else if (item.state === "failed") {
+      const b = document.createElement("button");
+      b.className = "icon-btn"; b.type = "button"; b.title = "Riprova"; b.setAttribute("aria-label", "Riprova");
+      b.appendChild(svg("i-retry"));
+      b.addEventListener("click", () => submit(item));
+      box.appendChild(b);
+      box.appendChild(svg("i-alert", "status-err"));
+    }
+    return box;
+  }
+
+  const rows = new Map();
+  function buildRow(item) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const thumb = document.createElement("div");
+    thumb.className = "thumb " + item.kind;
+    thumb.appendChild(svg(item.kind === "audio" ? "i-note" : "i-film"));
+    const text = document.createElement("div");
+    text.className = "text";
+    text.innerHTML = '<div class="title"></div><div class="sub"></div><div class="hint hidden"></div><div class="bar"><i></i></div>';
+    row.append(thumb, text, document.createElement("div"));
+    rows.set(item.id, row);
+    return row;
+  }
+  function updateRow(row, item) {
+    const [sub, cls] = subline(item);
+    row.querySelector(".title").textContent = item.title;
+    row.querySelector(".title").title = item.url;
+    const subEl = row.querySelector(".sub");
+    subEl.textContent = sub;
+    subEl.className = "sub" + (cls ? " " + cls : "");
+    const hint = row.querySelector(".hint");
+    const hintText = item.state === "failed" ? (item.hint ? item.error : "")
+      : item.state === "partial" ? item.failures.map((f) => f.track).filter(Boolean).slice(0, 5).join(" · ") : "";
+    hint.textContent = hintText || "";
+    hint.classList.toggle("hidden", !hintText);
+    const active = item.state === "queued" || item.state === "running" || item.state === "saving";
+    const bar = row.querySelector(".bar");
+    bar.classList.toggle("hidden", !active);
+    bar.classList.toggle("indeterminate", item.state === "queued" || item.state === "saving" || (item.state === "running" && item.progress <= 0));
+    bar.firstChild.style.width = Math.max(2, Math.min(100, item.progress)) + "%";
+    const key = item.state + "|" + item.files.length + "|" + (item.downloadUrl ? 1 : 0) + "|" + (api ? 1 : 0);
+    if (row.dataset.key !== key) {
+      row.dataset.key = key;
+      row.replaceChild(actionsFor(item), row.lastChild);
+    }
+  }
+
+  function render() {
+    const has = state.items.length > 0;
+    $("empty").classList.toggle("hidden", has);
+    $("section").classList.toggle("hidden", !has);
+    const ids = new Set(state.items.map((i) => i.id));
+    for (const [id, row] of rows) if (!ids.has(id)) { row.remove(); rows.delete(id); }
+    state.items.forEach((item, index) => {
+      const row = rows.get(item.id) || buildRow(item);
+      if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
+      updateRow(row, item);
+    });
+    const running = state.items.filter((i) => ["queued", "running", "saving"].includes(i.state)).length;
+    $("count").textContent = running ? (running === 1 ? "1 download in corso" : running + " download in corso")
+      : has ? (state.items.length === 1 ? "1 elemento" : state.items.length + " elementi") : "";
+    $("clear").classList.toggle("hidden", !state.items.some((i) => ["done", "partial", "failed"].includes(i.state)));
+  }
+
+  // ------------------------------------------------------------ eventi
+  goBtn.addEventListener("click", start);
+  urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+  urlInput.addEventListener("input", syncSite);
+  for (const b of document.querySelectorAll("#mode button")) b.addEventListener("click", () => setMode(b.dataset.mode, true));
+  $("bitrate").addEventListener("change", () => store.set("bitrate", $("bitrate").value));
+  $("quality").addEventListener("change", () => store.set("quality", $("quality").value));
+  $("clear").addEventListener("click", () => {
+    state.items = state.items.filter((i) => !["done", "partial", "failed"].includes(i.state));
+    render();
+  });
+  $("folder").addEventListener("click", () => { if (api) api.open_folder(state.mode === "video" ? "video" : "music"); });
+  $("paste").addEventListener("click", async () => {
+    let text = "";
+    if (api) text = await api.paste().catch(() => "");
+    else if (navigator.clipboard && navigator.clipboard.readText) text = await navigator.clipboard.readText().catch(() => "");
+    if (text) { urlInput.value = normalizeUrl(text); syncSite(); goBtn.focus(); }
+    else { urlInput.focus(); showNote("Negli appunti non c'è un link.", "error", 3000); }
+  });
+  // Cmd/Ctrl+V fuori dal campo: incolla comunque nel campo
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v" && document.activeElement !== urlInput) urlInput.focus();
+  });
+  // Trascina un link dentro la finestra
+  const app = $("app");
+  let dragDepth = 0;
+  document.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; app.classList.add("dragging"); });
+  document.addEventListener("dragover", (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; });
+  document.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) app.classList.remove("dragging"); });
+  document.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragDepth = 0; app.classList.remove("dragging");
+    const dt = e.dataTransfer;
+    const raw = dt ? (dt.getData("text/uri-list") || dt.getData("text/plain") || "") : "";
+    const link = raw.split(/\r?\n/).map((l) => l.trim()).find((l) => /^https?:\/\//i.test(l));
+    if (link) { urlInput.value = link; syncSite(); goBtn.focus(); }
+  });
+
+  // ------------------------------------------------------------ ponte col programma
+  async function connectApi() {
+    if (api || !(window.pywebview && window.pywebview.api)) return;
+    try {
+      const info = await window.pywebview.api.folders();
+      api = window.pywebview.api;
+      if (info) {
+        platform = info.platform || platform;
+        folders = info;
+      }
+      setMode(state.mode, false);
+      render();
+      window.__grabmediaApi = true;
+    } catch (e) { /* nel browser non c'è */ }
+  }
+  window.addEventListener("pywebviewready", connectApi);
+
+  // ------------------------------------------------------------ avvio
+  $("bitrate").value = store.get("bitrate", "192");
+  $("quality").value = store.get("quality", "best");
+  setMode(store.get("mode", "audio") === "video" ? "video" : "audio", false);
+  render();
+  connectApi();
+  urlInput.focus();
+  // sola lettura, per la prova automatica della finestra (--gui-smoke)
+  window.__grabmediaItems = () => state.items.map((i) => ({
+    kind: i.kind, state: i.state, title: i.title, files: i.files.slice(), error: i.error,
+  }));
+  window.__grabmediaReady = true;
+})();
+</script>
+</body>
+</html>

@@ -5,9 +5,9 @@ FastAPI + RQ + Redis + nginx, pronto per `docker compose`.
 
 ## Programma desktop (Windows e macOS)
 
-Lo stesso sito in un programma da doppio clic, senza installare niente: dentro
-ci sono Python, yt-dlp, ffmpeg e deno. Funziona su qualunque PC o Mac, anche
-senza Docker, Redis o nginx.
+Un programma da doppio clic con la sua finestra (niente browser), senza
+installare niente: dentro ci sono Python, yt-dlp, ffmpeg e deno. Funziona su
+qualunque PC o Mac, anche senza Docker, Redis o nginx.
 
 **Uso**
 
@@ -20,17 +20,25 @@ senza Docker, Redis o nginx.
   Privacy e sicurezza* e premi *Apri comunque* (su macOS 14 o precedenti basta
   clic destro → *Apri*).
 
-Si apre una finestrella con tre pulsanti (*Apri GrabMedia*, *Apri la cartella
-della musica*, *Esci*) e il sito nel browser. La finestra va lasciata aperta
-mentre si scarica; *Esci* ferma tutto.
+Si apre la finestra di GrabMedia (interfaccia `frontend/app.html`, in stile
+macOS, chiara o scura come il sistema): si incolla o si trascina un link, si
+sceglie **Audio** (MP3, 128–320 kbps) o **Video** (migliore, 4K, 1080p, 720p) e
+si preme *Scarica*. Ogni download compare nell'elenco con la sua barra; a fine
+download la lente apre il file nel Finder (o in Esplora file). Chiudendo la
+finestra si ferma tutto.
 
+- La musica va in `Musica/GrabMedia` (sempre MP3: si apre ovunque), i video in
+  `Filmati/GrabMedia` su macOS e `Video/GrabMedia` su Windows.
+- Spotify, SoundCloud e Bandcamp sono solo audio: con quei link "Video" si disattiva.
+- La finestra è nativa: WebKit su macOS, Microsoft Edge WebView2 su Windows (già
+  presente in Windows 10 e 11). Se WebView2 mancasse, il programma ripiega su una
+  finestrella semplice che apre l'interfaccia nel browser.
 - Nessuna password: il programma ascolta solo su `127.0.0.1` (non è raggiungibile
-  da altri computer), quindi il riquadro di accesso non compare.
-- La musica di "Provider audio" va in `Musica/GrabMedia`; i download classici si
-  salvano dal browser come sempre.
-- "Provider audio" scarica **sempre in MP3** (192 kbps se non si sceglie altro):
-  attivandolo la pagina passa da sola a *Solo audio MP3*. Il formato originale
-  (`best`, spesso `.opus`) resta disponibile dalla CLI e da `config.toml`.
+  da altri computer). Le funzioni del programma usate dalla finestra (mostrare un
+  file, aprire una cartella, leggere gli appunti, salvare un video) rispondono
+  solo alla pagina di GrabMedia e lavorano solo dentro le sue cartelle.
+- Il formato originale (`best`, spesso `.opus`) resta disponibile dalla CLI e da
+  `config.toml`.
 - Configurazione, stato e log stanno nella cartella dati dell'utente
   (`%LOCALAPPDATA%\GrabMedia` su Windows, `~/Library/Application Support/GrabMedia`
   su macOS): `config.toml` si può modificare, `grabmedia.log` serve se qualcosa non va.
@@ -49,11 +57,19 @@ PyInstaller non compila per un altro sistema: la versione Mac si costruisce su
 un Mac. Per questo c'è il workflow `.github/workflows/build-desktop.yml`
 (*Programma desktop*), manuale o al push di un tag `v*`: costruisce Windows,
 macOS Apple Silicon e macOS Intel, **prova ogni pacchetto sul runner**
-(`--self-check` e avvio reale con `/health`) e carica gli zip come artifact; con
-un tag, o con l'input `release_tag`, li pubblica anche in una Release del repository.
+(`--self-check`, avvio reale con `/health`, apertura della finestra vera con
+`--gui-smoke` e foto dello schermo caricata come artifact `finestra-…`) e carica
+gli zip come artifact; con un tag, o con l'input `release_tag`, li pubblica anche
+in una Release del repository.
+
+L'icona sta in `desktop/assets` (`icon-mac.png` sulla griglia Apple,
+`icon-win.png` a tutta superficie) e si ridisegna con `python desktop/make_icon.py`.
 
 Modalità dell'eseguibile, utili per le verifiche: `--self-check` (controlla che
-il pacchetto sia completo, exit 0/1), `--no-gui --port N` (solo server).
+il pacchetto sia completo, exit 0/1), `--gui-smoke` (apre la finestra, controlla
+l'interfaccia e si chiude; con `GRABMEDIA_SMOKE_DOWNLOAD="audio|URL"` o
+`"video|URL"` fa anche un download vero dalla finestra), `--no-gui --port N`
+(solo server), `--tk` (finestra semplice + browser).
 Limiti noti: il programma non è firmato né notarizzato; lo zip pesa circa 110 MB
 perché contiene ffmpeg e deno.
 
