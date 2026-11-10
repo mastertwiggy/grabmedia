@@ -95,13 +95,30 @@ def test_default_config_is_written_once_and_valid(monkeypatch, tmp_path: Path):
     cfg = config.load(path)
     assert cfg.out_dir == (tmp_path / "music con spazi").resolve()
     assert cfg.state_db == (tmp_path / "data" / "state.sqlite3").resolve()
-    assert cfg.priority == ["spotify_embed", "spotify"] and cfg.quality_default == "best"
+    assert cfg.priority == ["spotify_embed", "spotify"]
+    # MP3 di default: il formato originale (.opus) molti lettori non lo aprono
+    from sources import _ytdlp
+
+    assert cfg.quality_default == "mp3_192"
+    quality = _ytdlp.parse_quality(cfg.quality_default, "youtube")
+    assert quality.codec == "mp3" and quality.bitrate == 192 and not quality.native
     assert cfg.options["spotify_embed"] == {"mode": "embed", "audio_provider": "youtube"}
     assert cfg.naming == "{artist}/{album}/{track_no:02d} - {title}"
     # non sovrascrive le modifiche dell'utente
-    path.write_text(path.read_text(encoding="utf-8").replace('default = "best"', 'default = "mp3"'), encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8").replace('default = "mp3_192"', 'default = "best"'), encoding="utf-8")
     gd.write_default_config(path)
-    assert config.load(path).quality_default == "mp3"
+    assert config.load(path).quality_default == "best"
+
+
+def test_provider_audio_page_always_asks_for_mp3():
+    """Provider audio scarica in MP3: la pagina non chiede più il formato nativo
+    (arrivavano file .opus) e mostra la scelta "Solo audio MP3" col bitrate."""
+    page = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert 'function audioFormat() { return "mp3_" + selectedBitrate(); }' in page
+    assert 'return "best"; // i formati video' not in page
+    assert "if (audioMode.checked) selectMp3();" in page
+    assert 'audioMode.addEventListener("change", syncAudioMode);' in page
+    assert "scarica in MP3" in page
 
 
 def test_config_path_from_environment(monkeypatch, tmp_path: Path):
@@ -205,6 +222,33 @@ def test_redis_commands_are_loaded_without_the_model_folder(monkeypatch, tmp_pat
     monkeypatch.setattr(info, "_COMMAND_INFO", None)
     monkeypatch.setattr(info, "__file__", str(tmp_path / "altrove" / "model" / "x.pyc"))
     assert gd.preload_redis_commands() is False
+
+
+def test_backend_is_ready_only_when_its_own_server_started():
+    """Una porta aperta da un altro programma non vuol dire "pronto": con --port su
+    una porta occupata l'avvio veniva dato per riuscito (visto davvero)."""
+    import threading
+    import types
+
+    with socket.socket() as other:  # un altro programma occupa la porta
+        other.bind(("127.0.0.1", 0))
+        other.listen(1)
+        backend = gd.Backend(port=other.getsockname()[1])
+        assert gd.port_open(backend.port) and backend.ready() is False  # niente server nostro
+        finished = threading.Thread(target=lambda: None)
+        finished.start()
+        finished.join()
+        backend._server, backend._thread = types.SimpleNamespace(started=False), finished
+        assert backend.ready() is False and "occupata" in backend.error
+        assert backend.wait_ready(timeout=1) is False
+
+    backend = gd.Backend(port=1)
+    running = threading.Thread(target=time.sleep, args=(0.5,), daemon=True)
+    running.start()
+    backend._server, backend._thread = types.SimpleNamespace(started=False), running
+    assert backend.ready() is False and backend.error is None  # sta ancora partendo
+    backend._server.started = True
+    assert backend.ready() is True
 
 
 def test_headless_mode_stops_cleanly_on_sigterm():

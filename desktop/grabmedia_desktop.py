@@ -94,7 +94,8 @@ order = ["spotify_embed", "spotify"]
 default = 2
 
 [quality]
-default = "best"
+# mp3_192 = MP3 a 192 kbps (si apre ovunque). "best" = formato originale, senza conversione (spesso .opus).
+default = "mp3_192"
 
 [options.spotify_embed]
 mode = "embed"
@@ -392,7 +393,16 @@ class Backend:
             raise
 
     def ready(self) -> bool:
-        return self.error is None and port_open(self.port)
+        """Pronto solo se è partito il NOSTRO server: una porta aperta non basta
+        (potrebbe essere di un altro programma, visto con --port su una porta occupata)."""
+        server, thread = self._server, self._thread
+        if self.error is not None or server is None or thread is None:
+            return False
+        if getattr(server, "started", False):
+            return True
+        if not thread.is_alive():  # uvicorn è uscito senza partire: di solito porta occupata
+            self.error = f"il server non è partito (porta {self.port} occupata?)"
+        return False
 
     def wait_ready(self, timeout: float = 60.0) -> bool:
         deadline = time.monotonic() + timeout

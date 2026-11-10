@@ -432,7 +432,7 @@
           <div class="opt-group">
             <label class="lbl" style="display:flex;align-items:center;gap:8px;cursor:pointer">
               <input type="checkbox" id="audio-mode" style="accent-color:var(--accent, #7c5cff)">
-              Provider audio (Spotify, SoundCloud, Bandcamp, album e playlist) · si attiva da solo per quei link
+              Provider audio (Spotify, SoundCloud, Bandcamp, album e playlist) · scarica in MP3 · si attiva da solo per quei link
             </label>
             <div class="alert hidden" id="bandcamp-mp3-hint" role="note" style="margin-top:8px">
               <svg><use href="#i-info"/></svg><span>Bandcamp: con MP3 ottieni lo stream a 128 kbps del player, non il file originale (FLAC/WAV/320 non sono disponibili qui).</span>
@@ -625,7 +625,7 @@
         event.preventDefault();
         const url = urlInput.value.trim();
         if (!url) { toast("Inserisci un URL valido.", "error"); urlInput.focus(); return; }
-        if (audioMode.checked) { await startAudioTask(url); return; }
+        if (audioMode.checked) { selectMp3(); syncBandcampHint(); await startAudioTask(url); return; }
         const format = selectedFormat();
         const payload = { url: url, format: format };
         if (format === MP3) payload.audio_bitrate = selectedBitrate();
@@ -840,16 +840,22 @@
       }
 
       // ---------- Provider audio (façade /audio) ----------
-      function audioFormat() {
-        const f = selectedFormat();
-        if (f === MP3) return "mp3_" + selectedBitrate();
-        return "best"; // i formati video non hanno senso qui: formato nativo
+      // Provider audio scarica sempre in MP3 (si apre ovunque): le qualità video qui
+      // non hanno senso e il formato nativo (.opus) molti lettori non lo aprono.
+      function audioFormat() { return "mp3_" + selectedBitrate(); }
+
+      // Con Provider audio attivo la scelta visibile diventa "Solo audio MP3" (col bitrate)
+      function selectMp3() {
+        const mp3 = $("f-mp3");
+        if (!mp3.checked) mp3.checked = true;
+        syncBitrate();
       }
 
       function hostOf(url) { try { return new URL(url).hostname; } catch (e) { return ""; } }
 
       function syncAudioMode() {
         if (AUDIO_HOSTS.test(hostOf(urlInput.value.trim()))) audioMode.checked = true;
+        if (audioMode.checked) selectMp3();
         syncBandcampHint();
       }
 
@@ -1015,6 +1021,7 @@
       $("cleanup-btn").addEventListener("click", runCleanup);
       urlInput.addEventListener("input", syncAudioMode);
       urlInput.addEventListener("change", syncAudioMode);
+      audioMode.addEventListener("change", syncAudioMode);
       authForm.addEventListener("submit", submitLogin);
       $("auth-logout").addEventListener("click", doLogout);
       checkSession();

@@ -28,6 +28,9 @@ mentre si scarica; *Esci* ferma tutto.
   da altri computer), quindi il riquadro di accesso non compare.
 - La musica di "Provider audio" va in `Musica/GrabMedia`; i download classici si
   salvano dal browser come sempre.
+- "Provider audio" scarica **sempre in MP3** (192 kbps se non si sceglie altro):
+  attivandolo la pagina passa da sola a *Solo audio MP3*. Il formato originale
+  (`best`, spesso `.opus`) resta disponibile dalla CLI e da `config.toml`.
 - Configurazione, stato e log stanno nella cartella dati dell'utente
   (`%LOCALAPPDATA%\GrabMedia` su Windows, `~/Library/Application Support/GrabMedia`
   su macOS): `config.toml` si può modificare, `grabmedia.log` serve se qualcosa non va.
