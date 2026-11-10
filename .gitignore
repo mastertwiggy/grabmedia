@@ -14,3 +14,6 @@ downloads/unmatched.log
 desktop/vendor/
 desktop/build/
 desktop/dist/
+
+# password reale del sito: resta solo sul computer (il modello pubblico è .htpasswd.example)
+nginx/.htpasswd

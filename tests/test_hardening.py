@@ -306,7 +306,8 @@ def test_audio_requires_a_session(http_app):
     with pytest.MonkeyPatch.context() as mp:
         mp.delenv("GRABMEDIA_AUTH_USER")
         mp.delenv("GRABMEDIA_AUTH_PASSWORD")
-        mp.setattr(main, "HTPASSWD_PATH", Path(main.__file__).resolve().parent.parent / "nginx" / ".htpasswd")
+        # il modello pubblico: nginx/.htpasswd (password reale) non sta nel repository
+        mp.setattr(main, "HTPASSWD_PATH", Path(main.__file__).resolve().parent.parent / "nginx" / ".htpasswd.example")
         assert anonymous.post("/login", json={"username": "grabmedia", "password": "nope"}).status_code == 401
         assert anonymous.post("/login", json={"username": "grabmedia", "password": "grabmedia2026"}).status_code == 200
         assert anonymous.get("/audio/" + "0" * 32).status_code == 404  # autenticato: task inesistente

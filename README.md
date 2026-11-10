@@ -58,6 +58,7 @@ perché contiene ffmpeg e deno.
 
 ```bash
 cp .env.example .env
+cp nginx/.htpasswd.example nginx/.htpasswd
 docker compose up -d --build
 ```
 
@@ -68,12 +69,15 @@ Documentazione API (Swagger): http://localhost:8080/docs
 ## Credenziali per il download dei file
 
 Il download dei file (`GET /download/{job_id}/{filename}`) è protetto da Basic Auth in nginx.
-Credenziali di default in `nginx/.htpasswd`:
+Le credenziali stanno in `nginx/.htpasswd`, che **non è nel repository** (è in
+`.gitignore`): si crea copiando il modello `nginx/.htpasswd.example`, che contiene
+quelle di esempio:
 
 - utente: `grabmedia`
 - password: `grabmedia2026`
 
-Per cambiarle (richiede `apache2-utils` / `httpd-tools`, oppure usa Docker):
+**Sono pubbliche: vanno cambiate prima di esporre il sito in rete.** Per cambiarle
+(richiede `apache2-utils` / `httpd-tools`, oppure usa Docker):
 
 ```bash
 docker run --rm httpd:2.4-alpine htpasswd -nbB grabmedia NUOVA_PASSWORD > nginx/.htpasswd
