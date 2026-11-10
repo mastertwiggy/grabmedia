@@ -1,0 +1,142 @@
+name: Programma desktop
+
+# Costruisce il programma desktop (desktop/build.py) per Windows e macOS.
+# PyInstaller non compila per un altro sistema: ogni pacchetto nasce sul suo
+# runner. Dopo la build il pacchetto viene PROVATO sul runner: autocontrollo
+# (--self-check: provider, ffmpeg e deno inclusi, yt-dlp) e avvio reale senza
+# finestra con /health e /session. Un pacchetto che non parte non viene caricato.
+#
+# Avvio: manuale (workflow_dispatch) oppure push di un tag "v*".
+# Con un tag (o con l'input release_tag) gli zip finiscono anche in una Release
+# del repository, da cui si scaricano direttamente.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Pubblica gli zip in una Release con questo tag (es. v1.0.0). Vuoto = solo artifact"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false   # un sistema che fallisce non blocca gli altri
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+            zip: GrabMedia-windows-x64.zip
+          - os: macos-latest
+            label: macOS (Apple Silicon)
+            zip: GrabMedia-macos-arm64.zip
+          - os: macos-15-intel
+            label: macOS (Intel)
+            zip: GrabMedia-macos-x64.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-desktop.txt
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Dipendenze
+        run: python -m pip install -r requirements-desktop.txt pytest httpx
+
+      - name: La finestra ha bisogno di tkinter
+        run: python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+
+      - name: Test del launcher (da sorgente)
+        run: python -m pytest tests/test_desktop.py -q -p no:cacheprovider
+
+      - name: Build
+        run: python desktop/build.py
+
+      - name: Prova del pacchetto
+        env:
+          GRABMEDIA_DATA_DIR: ${{ runner.temp }}/grabmedia-dati
+          GRABMEDIA_MUSIC_DIR: ${{ runner.temp }}/grabmedia-musica
+        run: |
+          test -f "desktop/dist/${{ matrix.zip }}"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            EXE="desktop/dist/GrabMedia.app/Contents/MacOS/GrabMedia"
+          else
+            EXE="desktop/dist/GrabMedia/GrabMedia.exe"
+          fi
+          "$EXE" --self-check
+          "$EXE" --no-gui --port 8765 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 90); do
+            if curl -fsS -m 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS -m 10 http://127.0.0.1:8765/health | tee /dev/stderr | grep -q '"redis":true'
+          curl -fsS -m 10 http://127.0.0.1:8765/session | tee /dev/stderr | grep -q '"auth_required":false'
+          curl -fsS -m 10 -o /dev/null http://127.0.0.1:8765/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.zip }}
+          path: desktop/dist/${{ matrix.zip }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Release
+    needs: build
+    # anche se un sistema è fallito: si pubblicano i pacchetti riusciti
+    if: ${{ !cancelled() && (startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Pubblica gli zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::Nessun pacchetto da pubblicare: tutte le build sono fallite"
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" \
+              --title "GrabMedia $TAG" \
+              --notes "Programma desktop. Windows: estrai lo zip e apri GrabMedia.exe. macOS: estrai lo zip e apri GrabMedia.app (arm64 = Apple Silicon, x64 = Intel)."
+          fi

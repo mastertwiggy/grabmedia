@@ -1,0 +1,6 @@
+# Programma desktop (desktop/build.py): il runtime con i pin esatti, più ciò
+# che serve per impacchettarlo. fakeredis è il Redis in memoria del programma.
+-r requirements.txt
+fakeredis>=2.26,<3
+pyinstaller>=6.10,<7
+imageio-ffmpeg>=0.5,<1

@@ -96,6 +96,13 @@ def is_protected_path(path: str) -> bool:
     return path == PROTECTED_PREFIX or path.startswith(PROTECTED_PREFIX + "/")
 
 
+def auth_required() -> bool:
+    """``False`` solo con ``GRABMEDIA_NO_AUTH=1``: lo imposta il programma desktop,
+    che ascolta esclusivamente su 127.0.0.1 ed è usato da chi siede al computer.
+    Sul server (Docker, rete) l'accesso resta sempre richiesto."""
+    return os.environ.get("GRABMEDIA_NO_AUTH", "").strip().lower() not in ("1", "true", "yes")
+
+
 def _login_retry_after(client: str) -> float | None:
     """Secondi da attendere se l'indirizzo ha esaurito i tentativi, altrimenti ``None``."""
     now = time.time()
@@ -183,7 +190,8 @@ app.add_middleware(
 async def audio_session_guard(request: Request, call_next):
     """Protegge /audio e i download dei suoi file: senza un cookie di sessione
     valido risponde 401 (JSON), senza mai arrivare agli endpoint."""
-    if is_protected_path(request.url.path) and session_user(request.cookies.get(SESSION_COOKIE)) is None:
+    if (auth_required() and is_protected_path(request.url.path)
+            and session_user(request.cookies.get(SESSION_COOKIE)) is None):
         return JSONResponse(status_code=401, content={"detail": "Accesso richiesto", "login": "/login"})
     return await call_next(request)
 
@@ -390,6 +398,8 @@ async def logout(request: Request, response: Response):
 @app.get("/session")
 async def session_state(request: Request):
     """Stato della sessione per la pagina (il cookie è HttpOnly: il JS non lo può leggere)."""
+    if not auth_required():  # programma desktop: nessun accesso da fare, la pagina non mostra il riquadro
+        return {"authenticated": True, "user": None, "auth_required": False}
     user = session_user(request.cookies.get(SESSION_COOKIE))
     return {"authenticated": user is not None, "user": user}
 

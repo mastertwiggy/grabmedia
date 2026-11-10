@@ -3,6 +3,57 @@
 Servizio di download video/audio (YouTube, SoundCloud, Vimeo e tutti i siti supportati da yt-dlp).
 FastAPI + RQ + Redis + nginx, pronto per `docker compose`.
 
+## Programma desktop (Windows e macOS)
+
+Lo stesso sito in un programma da doppio clic, senza installare niente: dentro
+ci sono Python, yt-dlp, ffmpeg e deno. Funziona su qualunque PC o Mac, anche
+senza Docker, Redis o nginx.
+
+**Uso**
+
+- **Windows**: estrai `GrabMedia-windows-x64.zip` (tutta la cartella) e apri
+  `GrabMedia.exe`. Al primo avvio Windows può mostrare "PC protetto da Windows":
+  *Ulteriori informazioni* → *Esegui comunque* (il programma non è firmato).
+- **macOS**: estrai `GrabMedia-macos-arm64.zip` (Mac con Apple Silicon) oppure
+  `GrabMedia-macos-x64.zip` (Mac Intel) e apri `GrabMedia.app`. Il programma non
+  è firmato: al primo avvio macOS lo blocca; vai in *Impostazioni di Sistema →
+  Privacy e sicurezza* e premi *Apri comunque* (su macOS 14 o precedenti basta
+  clic destro → *Apri*).
+
+Si apre una finestrella con tre pulsanti (*Apri GrabMedia*, *Apri la cartella
+della musica*, *Esci*) e il sito nel browser. La finestra va lasciata aperta
+mentre si scarica; *Esci* ferma tutto.
+
+- Nessuna password: il programma ascolta solo su `127.0.0.1` (non è raggiungibile
+  da altri computer), quindi il riquadro di accesso non compare.
+- La musica di "Provider audio" va in `Musica/GrabMedia`; i download classici si
+  salvano dal browser come sempre.
+- Configurazione, stato e log stanno nella cartella dati dell'utente
+  (`%LOCALAPPDATA%\GrabMedia` su Windows, `~/Library/Application Support/GrabMedia`
+  su macOS): `config.toml` si può modificare, `grabmedia.log` serve se qualcosa non va.
+
+**Costruirlo**
+
+```bash
+pip install -r requirements-desktop.txt
+python desktop/build.py
+```
+
+Il risultato è in `desktop/dist` (cartella `GrabMedia/` + zip su Windows,
+`GrabMedia.app` + zip su macOS). Serve deno installato sulla macchina che
+costruisce (viene copiato nel pacchetto); ffmpeg arriva da `imageio-ffmpeg`.
+PyInstaller non compila per un altro sistema: la versione Mac si costruisce su
+un Mac. Per questo c'è il workflow `.github/workflows/build-desktop.yml`
+(*Programma desktop*), manuale o al push di un tag `v*`: costruisce Windows,
+macOS Apple Silicon e macOS Intel, **prova ogni pacchetto sul runner**
+(`--self-check` e avvio reale con `/health`) e carica gli zip come artifact; con
+un tag, o con l'input `release_tag`, li pubblica anche in una Release del repository.
+
+Modalità dell'eseguibile, utili per le verifiche: `--self-check` (controlla che
+il pacchetto sia completo, exit 0/1), `--no-gui --port N` (solo server).
+Limiti noti: il programma non è firmato né notarizzato; lo zip pesa circa 110 MB
+perché contiene ffmpeg e deno.
+
 ## Avvio
 
 ```bash

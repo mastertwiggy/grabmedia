@@ -9,3 +9,8 @@ downloads/spotify_cache.sqlite3*
 downloads/.spotify_token.json
 downloads/unmatched.log
 .claude/
+
+# programma desktop: binari copiati e output di PyInstaller
+desktop/vendor/
+desktop/build/
+desktop/dist/

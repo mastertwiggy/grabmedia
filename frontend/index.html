@@ -834,6 +834,7 @@
         try {
           const res = await fetch(API + "/session");
           const data = await res.json();
+          if (data.auth_required === false) return; // programma desktop: nessun accesso, nessun riquadro
           if (data.authenticated) showConnected(data.user);
         } catch (e) { /* ignora */ }
       }

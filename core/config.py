@@ -145,6 +145,9 @@ def from_dict(data: dict, base: Path = PROJECT_ROOT, source: Path | None = None)
 
 def load(path: Path | str | None = None) -> Config:
     """Legge ``config.toml`` (o il file indicato). Se manca, usa i default."""
+    # GRABMEDIA_CONFIG: percorso alternativo (es. il programma desktop, che tiene
+    # configurazione e dati nella cartella dell'utente e non in quella del codice).
+    path = path or os.environ.get("GRABMEDIA_CONFIG") or None
     cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
     if not cfg_path.exists():
         if path:
