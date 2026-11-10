@@ -1,0 +1,5 @@
+# CLI (core/ + sources/): stesso runtime della web app, nessun secondo pin.
+# L'intervallo qui sotto documenta le versioni di yt-dlp testate; pip lo
+# interseca con il pin esatto di requirements.txt. ffmpeg va installato a parte.
+-r requirements.txt
+yt-dlp>=2026.10.26,<2027

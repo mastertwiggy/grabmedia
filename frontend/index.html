@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070b14">
+  <title>GrabMedia – Scarica video e MP3 da YouTube, SoundCloud, Vimeo e oltre 1000 siti</title>
+  <meta name="description" content="GrabMedia: scarica video in 4K, 1080p, 720p o converti in MP3 (fino a 320 kbps) da YouTube, SoundCloud, Vimeo, TikTok e oltre 1000 siti. Gratis, veloce, senza registrazione.">
+  <meta name="keywords" content="scaricare video, youtube mp3, youtube downloader, video downloader, soundcloud mp3, convertire video in mp3, grabmedia">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GrabMedia">
+  <meta property="og:title" content="GrabMedia – Scarica video e MP3 da oltre 1000 siti">
+  <meta property="og:description" content="Incolla il link, scegli qualità o bitrate MP3, scarica. Gratis e senza account.">
+  <meta property="og:locale" content="it_IT">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="GrabMedia – Scarica video e MP3 da oltre 1000 siti">
+  <meta name="twitter:description" content="Video in 4K/1080p/720p o MP3 fino a 320 kbps da YouTube, SoundCloud, Vimeo e molti altri.">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "GrabMedia",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Web",
+    "inLanguage": "it",
+    "description": "Scarica video e MP3 da YouTube, SoundCloud, Vimeo e oltre 1000 siti.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" }
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #070b14;
+      --bg-2: #0d1424;
+      --card: rgba(255, 255, 255, 0.045);
+      --card-border: rgba(255, 255, 255, 0.09);
+      --card-hover: rgba(255, 255, 255, 0.07);
+      --text: #eef2ff;
+      --text-dim: #9aa5c4;
+      --text-faint: #61698a;
+      --teal: #2dd4bf;
+      --cyan: #22d3ee;
+      --violet: #a78bfa;
+      --gold: #fbbf24;
+      --ok: #34d399;
+      --err: #fb7185;
+      --warn: #fbbf24;
+      --grad: linear-gradient(135deg, #22d3ee 0%, #2dd4bf 45%, #a78bfa 100%);
+      --grad-ok: linear-gradient(135deg, #34d399, #2dd4bf);
+      --radius: 20px;
+      --shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---------- Sfondo animato ---------- */
+    .bg {
+      position: fixed; inset: 0; z-index: -1; overflow: hidden;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(45, 212, 191, 0.14), transparent 60%),
+        var(--bg);
+    }
+    .bg::before, .bg::after {
+      content: ""; position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55;
+      animation: drift 26s ease-in-out infinite alternate;
+    }
+    .bg::before { width: 620px; height: 620px; left: -180px; top: 10%; background: radial-gradient(circle, #0ea5e9, transparent 65%); }
+    .bg::after  { width: 720px; height: 720px; right: -220px; bottom: -10%; background: radial-gradient(circle, #7c3aed, transparent 65%); animation-delay: -12s; }
+    .bg .grid {
+      position: absolute; inset: 0;
+      background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at 50% 0%, #000 20%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 20%, transparent 70%);
+    }
+    @keyframes drift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(90px, -60px) scale(1.15); }
+    }
+
+    /* ---------- Layout ---------- */
+    .wrap { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+    header.top {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 22px 0;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+    .brand .mark {
+      width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+      background: var(--grad); box-shadow: 0 10px 30px -8px rgba(34, 211, 238, 0.6);
+    }
+    .brand .mark svg { width: 24px; height: 24px; }
+    .brand .name { font-weight: 800; font-size: 19px; letter-spacing: -0.02em; line-height: 1.1; }
+    .brand .tag { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+    .health {
+      display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-dim);
+      padding: 7px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--card-border);
+    }
+    .health .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+    .health.ok .dot { background: var(--ok); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.18); }
+    .health.bad .dot { background: var(--err); box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.18); }
+
+    main { flex: 1; display: flex; flex-direction: column; gap: 22px; padding-bottom: 60px; }
+
+    .hero { text-align: center; padding: 26px 0 6px; }
+    .hero h1 {
+      margin: 0 0 10px; font-size: clamp(30px, 5vw, 48px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
+    }
+    .hero h1 span {
+      background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero p { margin: 0; color: var(--text-dim); font-size: 16px; }
+    .sites { margin-top: 14px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .sites span {
+      font-size: 12px; font-weight: 600; color: var(--text-dim); padding: 5px 11px; border-radius: 999px;
+      border: 1px solid var(--card-border); background: var(--card);
+    }
+
+    /* ---------- Card ---------- */
+    .card {
+      position: relative; background: var(--card); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 26px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      box-shadow: var(--shadow); animation: rise .5s cubic-bezier(.2,.8,.2,1) both;
+    }
+    .card.glow::before {
+      content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
+      background: linear-gradient(135deg, rgba(34,211,238,.5), rgba(167,139,250,.35), transparent 70%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .card h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+    .card h2 svg { width: 18px; height: 18px; color: var(--teal); }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+
+    /* ---------- Input URL ---------- */
+    .urlbox {
+      display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px;
+      background: rgba(3, 7, 18, 0.55); border: 1px solid var(--card-border); border-radius: 16px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .urlbox:focus-within { border-color: rgba(45, 212, 191, 0.7); box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.14); }
+    .urlbox svg { width: 20px; height: 20px; color: var(--text-faint); flex: none; }
+    .urlbox input {
+      flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text);
+      font: inherit; font-size: 16px; padding: 10px 0;
+    }
+    .urlbox input::placeholder { color: var(--text-faint); }
+    .ghost {
+      border: 1px solid var(--card-border); background: transparent; color: var(--text-dim); font: inherit;
+      font-size: 13px; font-weight: 600; padding: 9px 12px; border-radius: 11px; cursor: pointer; transition: .15s;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .ghost:hover { background: var(--card-hover); color: var(--text); border-color: rgba(255,255,255,.2); }
+    .ghost:disabled { opacity: .5; cursor: not-allowed; }
+    .ghost svg { width: 15px; height: 15px; }
+
+    /* ---------- Pillole formato ---------- */
+    .opts { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 16px; }
+    .opt-group { display: flex; flex-direction: column; gap: 8px; }
+    .opt-group label.lbl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pills input { position: absolute; opacity: 0; pointer-events: none; }
+    .pills label.pill {
+      padding: 8px 14px; border-radius: 999px; border: 1px solid var(--card-border); background: rgba(3,7,18,.4);
+      font-size: 13.5px; font-weight: 600; color: var(--text-dim); cursor: pointer; user-select: none;
+      display: inline-flex; align-items: center; gap: 6px; transition: .15s;
+    }
+    .pills label.pill svg { width: 14px; height: 14px; }
+    .pills label.pill:hover { color: var(--text); border-color: rgba(255,255,255,.22); }
+    .pills input:checked + label.pill {
+      color: #04121a; background: var(--grad); border-color: transparent;
+      box-shadow: 0 8px 22px -10px rgba(34, 211, 238, 0.8);
+    }
+    .pills input:focus-visible + label.pill { outline: 2px solid var(--teal); outline-offset: 2px; }
+    #bitrate-group { animation: rise .25s both; }
+
+    .cta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+    .hint { font-size: 12.5px; color: var(--text-faint); }
+    .btn-primary {
+      position: relative; border: none; cursor: pointer; font: inherit; font-weight: 700; font-size: 15px;
+      color: #04121a; padding: 13px 24px; border-radius: 14px; background: var(--grad);
+      display: inline-flex; align-items: center; gap: 9px; transition: transform .15s, box-shadow .15s, filter .15s;
+      box-shadow: 0 14px 34px -12px rgba(45, 212, 191, 0.75);
+    }
+    .btn-primary svg { width: 18px; height: 18px; }
+    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 18px 40px -12px rgba(45, 212, 191, 0.9); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: .6; cursor: progress; transform: none; }
+    .btn-primary .spin { width: 16px; height: 16px; border: 2px solid rgba(4,18,26,.3); border-top-color: #04121a; border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Stato ---------- */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .badge.pending   { color: var(--warn); background: rgba(251, 191, 36, .12); }
+    .badge.running   { color: var(--cyan); background: rgba(34, 211, 238, .12); }
+    .badge.running::before { animation: pulse 1.2s ease-in-out infinite; }
+    .badge.completed { color: var(--ok); background: rgba(52, 211, 153, .13); }
+    .badge.failed    { color: var(--err); background: rgba(251, 113, 133, .13); }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+
+    .status-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 2px; word-break: break-word; }
+    .status-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--text-dim); align-items: center; }
+    .status-meta code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: var(--text-faint); }
+    .chip { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 8px; background: rgba(255,255,255,.07); color: var(--text-dim); }
+
+    .progress { position: relative; height: 12px; margin-top: 18px; background: rgba(255,255,255,.07); border-radius: 999px; overflow: hidden; }
+    .progress .bar {
+      height: 100%; width: 0; border-radius: inherit; background: var(--grad);
+      transition: width .45s cubic-bezier(.2,.8,.2,1); position: relative;
+    }
+    .progress .bar::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+      transform: translateX(-100%); animation: shimmer 1.6s linear infinite;
+    }
+    .progress.done .bar { background: var(--grad-ok); }
+    .progress.done .bar::after, .progress.failed .bar::after { animation: none; }
+    .progress.failed .bar { background: linear-gradient(135deg, #fb7185, #f43f5e); }
+    @keyframes shimmer { to { transform: translateX(100%); } }
+    .progress-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; color: var(--text-dim); }
+    .progress-row .pct { font-weight: 800; font-size: 22px; letter-spacing: -0.03em; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .alert { margin-top: 16px; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.45; display: flex; gap: 10px; align-items: flex-start; }
+    .alert svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+    .alert.error { background: rgba(251, 113, 133, .12); color: #fecdd3; border: 1px solid rgba(251, 113, 133, .25); }
+
+    .result { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .btn-download {
+      display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: #04121a; font-weight: 700;
+      padding: 12px 20px; border-radius: 14px; background: var(--grad-ok);
+      box-shadow: 0 14px 34px -12px rgba(52, 211, 153, 0.8); transition: transform .15s, filter .15s;
+    }
+    .btn-download:hover { transform: translateY(-1px); filter: brightness(1.06); }
+    .btn-download svg { width: 18px; height: 18px; }
+    .file-meta { font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .file-meta strong { color: var(--text); font-weight: 600; word-break: break-all; }
+
+    /* ---------- Elenco job ---------- */
+    .jobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+    .job {
+      display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px;
+      background: rgba(3, 7, 18, 0.42); border: 1px solid var(--card-border); transition: .15s; animation: rise .35s both;
+    }
+    .job:hover { border-color: rgba(255,255,255,.2); background: rgba(3, 7, 18, 0.6); transform: translateY(-1px); }
+    .job .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .job .title { font-weight: 600; font-size: 14.5px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .job .title a { color: inherit; text-decoration: none; }
+    .job .title a:hover { color: var(--teal); }
+    .job .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-faint); }
+    .job .meta code { font-family: "JetBrains Mono", monospace; font-size: 11.5px; }
+    .job .err { font-size: 12.5px; color: #fda4af; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .job .mini-progress { height: 5px; background: rgba(255,255,255,.08); border-radius: 999px; overflow: hidden; }
+    .job .mini-progress div { height: 100%; background: var(--grad); border-radius: inherit; transition: width .4s; }
+    .job .actions { display: flex; justify-content: flex-end; margin-top: auto; }
+    .btn-mini {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; text-decoration: none;
+      color: var(--ok); padding: 7px 12px; border-radius: 10px; background: rgba(52, 211, 153, .12); border: 1px solid rgba(52, 211, 153, .25);
+      transition: .15s;
+    }
+    .btn-mini:hover { background: rgba(52, 211, 153, .22); }
+    .btn-mini svg { width: 14px; height: 14px; }
+
+    .empty { text-align: center; padding: 34px 10px; color: var(--text-faint); font-size: 14px; }
+    .empty svg { width: 46px; height: 46px; margin-bottom: 10px; opacity: .5; }
+
+    /* ---------- Toast ---------- */
+    .toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 10px; z-index: 50; max-width: min(380px, calc(100vw - 36px)); }
+    .toast {
+      display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4;
+      background: rgba(13, 20, 36, .92); border: 1px solid var(--card-border); backdrop-filter: blur(12px);
+      box-shadow: var(--shadow); animation: toast-in .3s cubic-bezier(.2,.8,.2,1) both;
+    }
+    .toast svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+    .toast.ok { border-color: rgba(52, 211, 153, .4); } .toast.ok svg { color: var(--ok); }
+    .toast.error { border-color: rgba(251, 113, 133, .4); } .toast.error svg { color: var(--err); }
+    .toast.info { border-color: rgba(34, 211, 238, .4); } .toast.info svg { color: var(--cyan); }
+    .toast.out { animation: toast-out .25s ease-in both; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+    @keyframes toast-out { to { opacity: 0; transform: translateY(8px); } }
+
+    footer { text-align: center; color: var(--text-faint); font-size: 12.5px; padding: 18px 0 28px; }
+    .hidden { display: none !important; }
+
+    @media (max-width: 640px) {
+      .card { padding: 20px 16px; }
+      .urlbox { flex-wrap: wrap; padding: 8px; }
+      .urlbox input { flex-basis: 100%; padding: 8px 6px; }
+      .urlbox .ghost { flex: 1; justify-content: center; }
+      .btn-primary { width: 100%; justify-content: center; }
+      .hero p { font-size: 14.5px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="grid"></div></div>
+
+  <!-- Icone riutilizzabili -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v11"/><path d="m7 10 5 5 5-5"/><path d="M3 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0"/>
+      </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+      </symbol>
+      <symbol id="i-paste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+      </symbol>
+      <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/>
+      </symbol>
+      <symbol id="i-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2v8l-4-2z"/>
+      </symbol>
+      <symbol id="i-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+      </symbol>
+      <symbol id="i-broom" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/>
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>
+      </symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+      </symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="/">
+        <span class="mark"><svg><use href="#i-logo"/></svg></span>
+        <span>
+          <div class="name">GrabMedia</div>
+          <div class="tag">video &amp; MP3 da oltre 1000 siti</div>
+        </span>
+      </a>
+      <div class="health" id="health" title="Stato del servizio"><span class="dot"></span><span id="health-text">Connessione…</span></div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Scarica <span>video e MP3</span><br>in un click.</h1>
+        <p>Incolla il link, scegli la qualità video o il bitrate MP3, lascia fare a noi. Niente account, niente pubblicità.</p>
+        <div class="sites">
+          <span>YouTube</span><span>SoundCloud</span><span>Vimeo</span><span>TikTok</span><span>Instagram</span><span>Twitch</span><span>+ 1000 altri</span>
+        </div>
+      </section>
+
+      <!-- Form -->
+      <section class="card glow">
+        <form id="download-form" autocomplete="off">
+          <div class="urlbox">
+            <svg><use href="#i-link"/></svg>
+            <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=…" required spellcheck="false">
+            <button type="button" class="ghost" id="paste-btn" title="Incolla dagli appunti"><svg><use href="#i-paste"/></svg>Incolla</button>
+          </div>
+
+          <div class="opts">
+            <div class="opt-group">
+              <label class="lbl">Qualità</label>
+              <div class="pills" id="format-pills" role="radiogroup">
+                <input type="radio" name="format" id="f-best" value="best" checked><label class="pill" for="f-best"><svg><use href="#i-zap"/></svg>Migliore</label>
+                <input type="radio" name="format" id="f-4k" value="4K"><label class="pill" for="f-4k"><svg><use href="#i-video"/></svg>4K</label>
+                <input type="radio" name="format" id="f-1080" value="1080p"><label class="pill" for="f-1080"><svg><use href="#i-video"/></svg>1080p</label>
+                <input type="radio" name="format" id="f-720" value="720p"><label class="pill" for="f-720"><svg><use href="#i-video"/></svg>720p</label>
+                <input type="radio" name="format" id="f-mp3" value="solo audio (mp3)"><label class="pill" for="f-mp3"><svg><use href="#i-music"/></svg>Solo audio MP3</label>
+              </div>
+            </div>
+            <div class="opt-group hidden" id="bitrate-group">
+              <label class="lbl">Bitrate MP3</label>
+              <div class="pills" role="radiogroup">
+                <input type="radio" name="bitrate" id="b-128" value="128"><label class="pill" for="b-128">128 kbps</label>
+                <input type="radio" name="bitrate" id="b-192" value="192" checked><label class="pill" for="b-192">192 kbps</label>
+                <input type="radio" name="bitrate" id="b-256" value="256"><label class="pill" for="b-256">256 kbps</label>
+                <input type="radio" name="bitrate" id="b-320" value="320"><label class="pill" for="b-320">320 kbps</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="opt-group">
+            <label class="lbl" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="audio-mode" style="accent-color:var(--accent, #7c5cff)">
+              Provider audio (Spotify, SoundCloud, Bandcamp, album e playlist) · si attiva da solo per quei link
+            </label>
+            <div class="alert hidden" id="bandcamp-mp3-hint" role="note" style="margin-top:8px">
+              <svg><use href="#i-info"/></svg><span>Bandcamp: con MP3 ottieni lo stream a 128 kbps del player, non il file originale (FLAC/WAV/320 non sono disponibili qui).</span>
+            </div>
+          </div>
+
+          <div class="cta-row">
+            <span class="hint">Max 500 MB per file · i file restano disponibili per 24 ore</span>
+            <button type="submit" class="btn-primary" id="submit-btn"><svg><use href="#i-down"/></svg><span>Avvia download</span></button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Stato -->
+      <section class="card hidden" id="status-card">
+        <div class="card-head">
+          <h2><svg><use href="#i-activity"/></svg><span id="status-heading">Download in corso</span></h2>
+          <span class="badge pending" id="status-badge">pending</span>
+        </div>
+        <div class="status-title" id="status-title">In attesa dei dettagli…</div>
+        <div class="status-meta">
+          <span class="chip" id="status-format">—</span>
+          <span id="status-detail">In coda</span>
+          <code id="status-job"></code>
+        </div>
+        <div class="progress" id="progress"><div class="bar" id="progress-bar"></div></div>
+        <div class="progress-row"><span class="pct" id="progress-text">0%</span><span id="progress-hint">In attesa del worker…</span></div>
+        <div class="alert error hidden" id="status-error"><svg><use href="#i-alert"/></svg><span id="status-error-text"></span></div>
+        <div class="result hidden" id="result">
+          <a class="btn-download" id="download-link" href="#" download><svg><use href="#i-down"/></svg>Scarica file</a>
+          <div class="file-meta"><strong id="result-name"></strong><span id="result-size"></span></div>
+        </div>
+      </section>
+
+      <!-- Attività -->
+      <section class="card">
+        <div class="card-head">
+          <h2><svg><use href="#i-inbox"/></svg>Attività recenti</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="ghost" id="refresh-btn"><svg><use href="#i-refresh"/></svg>Aggiorna</button>
+            <button type="button" class="ghost" id="cleanup-btn" title="Cancella job e file più vecchi di 24 ore"><svg><use href="#i-broom"/></svg>Pulisci vecchi file</button>
+          </div>
+        </div>
+        <div class="jobs" id="jobs"></div>
+        <div class="empty" id="jobs-empty"><svg><use href="#i-inbox"/></svg><div>Nessun download ancora. Incolla un link qui sopra per iniziare.</div></div>
+      </section>
+    </main>
+
+    <footer>GrabMedia · powered by yt-dlp · i file vengono cancellati automaticamente dopo 24 ore</footer>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const API = ""; // stesso host (nginx fa da proxy)
+      const MP3 = "solo audio (mp3)";
+      const $ = (id) => document.getElementById(id);
+
+      const form = $("download-form");
+      const urlInput = $("url");
+      const submitBtn = $("submit-btn");
+      const bitrateGroup = $("bitrate-group");
+      const statusCard = $("status-card");
+      const statusBadge = $("status-badge");
+      const statusTitle = $("status-title");
+      const statusFormat = $("status-format");
+      const statusDetail = $("status-detail");
+      const statusJob = $("status-job");
+      const progress = $("progress");
+      const progressBar = $("progress-bar");
+      const progressText = $("progress-text");
+      const progressHint = $("progress-hint");
+      const statusError = $("status-error");
+      const statusErrorText = $("status-error-text");
+      const result = $("result");
+      const downloadLink = $("download-link");
+      const resultName = $("result-name");
+      const resultSize = $("result-size");
+      const jobsEl = $("jobs");
+      const jobsEmpty = $("jobs-empty");
+      const health = $("health");
+      const healthText = $("health-text");
+      const audioMode = $("audio-mode");
+      const AUDIO_HOSTS = /(^|\.)(open\.spotify\.com|soundcloud\.com|on\.soundcloud\.com|bandcamp\.com)$/i;
+
+      let currentJob = null;
+      let currentTask = null;
+      let audioPollTimer = null;
+      let ws = null;
+      let pollTimer = null;
+      let lastStatus = null;
+
+      // ---------- Utility ----------
+      const esc = (t) => String(t == null ? "" : t)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+      function selectedFormat() { return (form.querySelector("input[name=format]:checked") || {}).value || "best"; }
+      function selectedBitrate() { return parseInt((form.querySelector("input[name=bitrate]:checked") || {}).value || "192", 10); }
+
+      function formatLabel(f, bitrate) {
+        if (f === MP3) return bitrate ? "MP3 · " + bitrate + " kbps" : "MP3";
+        if (f === "best") return "Migliore qualità";
+        return f;
+      }
+
+      function fmtSize(bytes) {
+        if (!bytes && bytes !== 0) return "";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+        if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
+        return (bytes / 1024 / 1024 / 1024).toFixed(2) + " GB";
+      }
+
+      function timeAgo(epoch) {
+        if (!epoch) return "";
+        const s = Math.max(0, Math.floor(Date.now() / 1000 - epoch));
+        if (s < 45) return "adesso";
+        if (s < 3600) return Math.floor(s / 60) + " min fa";
+        if (s < 86400) return Math.floor(s / 3600) + " h fa";
+        return Math.floor(s / 86400) + " g fa";
+      }
+
+      function extractError(data, httpStatus) {
+        if (data && data.detail) {
+          if (typeof data.detail === "string") return data.detail;
+          if (Array.isArray(data.detail)) {
+            return data.detail.map((d) => String(d.msg || "").replace(/^Value error, /, "")).filter(Boolean).join("; ");
+          }
+        }
+        return "Errore " + httpStatus;
+      }
+
+      // ---------- Toast ----------
+      function toast(text, type, ms) {
+        const icon = type === "ok" ? "#i-check" : type === "error" ? "#i-alert" : "#i-info";
+        const el = document.createElement("div");
+        el.className = "toast " + (type || "info");
+        el.innerHTML = '<svg><use href="' + icon + '"/></svg><span>' + esc(text) + "</span>";
+        $("toasts").appendChild(el);
+        setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 260); }, ms || 4500);
+      }
+
+      // ---------- Health ----------
+      async function checkHealth() {
+        try {
+          const r = await fetch(API + "/health");
+          const d = await r.json();
+          health.className = "health " + (d.redis ? "ok" : "bad");
+          healthText.textContent = d.redis ? "Servizio operativo" : "Coda non disponibile";
+        } catch (e) {
+          health.className = "health bad";
+          healthText.textContent = "Backend non raggiungibile";
+        }
+      }
+
+      // ---------- Avvio download ----------
+      async function startDownload(event) {
+        event.preventDefault();
+        const url = urlInput.value.trim();
+        if (!url) { toast("Inserisci un URL valido.", "error"); urlInput.focus(); return; }
+        if (audioMode.checked) { await startAudioTask(url); return; }
+        const format = selectedFormat();
+        const payload = { url: url, format: format };
+        if (format === MP3) payload.audio_bitrate = selectedBitrate();
+
+        setBusy(true);
+        try {
+          const res = await fetch(API + "/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(extractError(data, res.status));
+          currentJob = data.job_id;
+          resetStatusPanel(currentJob, format, payload.audio_bitrate);
+          subscribe(currentJob);
+          toast("Download avviato: in coda per il worker.", "info", 3000);
+          loadJobs();
+          statusCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (err) {
+          toast(err.message || "Errore di rete", "error", 6000);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function setBusy(busy) {
+        submitBtn.disabled = busy;
+        submitBtn.innerHTML = busy
+          ? '<span class="spin"></span><span>Invio…</span>'
+          : '<svg><use href="#i-down"/></svg><span>Avvia download</span>';
+      }
+
+      // ---------- Pannello stato ----------
+      function resetStatusPanel(jobId, format, bitrate) {
+        lastStatus = null;
+        statusCard.classList.remove("hidden");
+        statusJob.textContent = jobId;
+        statusTitle.textContent = "Recupero informazioni…";
+        statusFormat.textContent = formatLabel(format, bitrate);
+        statusDetail.textContent = "In coda";
+        progress.className = "progress";
+        progressBar.style.width = "0%";
+        progressText.textContent = "0%";
+        progressHint.textContent = "In attesa del worker…";
+        statusError.classList.add("hidden");
+        result.classList.add("hidden");
+        setBadge("pending");
+      }
+
+      function setBadge(status) {
+        statusBadge.textContent = status === "running" ? "in corso" : status === "completed" ? "completato" : status === "failed" ? "errore" : "in coda";
+        statusBadge.className = "badge " + status;
+        $("status-heading").textContent = status === "completed" ? "Download completato"
+          : status === "failed" ? "Download fallito" : "Download in corso";
+      }
+
+      const isFinal = (s) => s && (s.status === "completed" || s.status === "failed");
+
+      function applyStatus(s) {
+        if (!s || s.job_id !== currentJob) return;
+        lastStatus = s;
+        const pct = Math.max(0, Math.min(100, parseInt(s.progress, 10) || 0));
+        setBadge(s.status);
+        progressBar.style.width = pct + "%";
+        progressText.textContent = pct + "%";
+        progressHint.textContent = s.detail || "";
+        statusDetail.textContent = s.detail || "";
+        if (s.title) statusTitle.textContent = s.title;
+        if (s.format) statusFormat.textContent = formatLabel(s.format, s.audio_bitrate);
+
+        if (s.status === "completed") {
+          progress.className = "progress done";
+          progressBar.style.width = "100%";
+          progressText.textContent = "100%";
+          progressHint.textContent = "Pronto per il download";
+          if (s.download_url) {
+            downloadLink.href = s.download_url;
+            downloadLink.setAttribute("download", s.filename || "");
+            resultName.textContent = s.filename || "";
+            resultSize.textContent = "";
+            result.classList.remove("hidden");
+          }
+          toast("Download completato. Il file è pronto!", "ok");
+        } else if (s.status === "failed") {
+          progress.className = "progress failed";
+          progressBar.style.width = "100%";
+          statusErrorText.textContent = s.error_message || "Download fallito.";
+          statusError.classList.remove("hidden");
+          progressHint.textContent = "Operazione interrotta";
+          toast("Download fallito: " + (s.error_message || "errore sconosciuto"), "error", 7000);
+        }
+        if (isFinal(s)) { closeSubscription(); loadJobs(); }
+      }
+
+      // ---------- WebSocket + polling ----------
+      function subscribe(jobId) {
+        closeSubscription();
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        let socket;
+        try { socket = new WebSocket(proto + "://" + location.host + API + "/ws/" + jobId); }
+        catch (e) { startPolling(jobId); return; }
+        ws = socket;
+        socket.onmessage = (ev) => { try { applyStatus(JSON.parse(ev.data)); } catch (e) { /* ignora */ } };
+        socket.onclose = () => {
+          if (ws === socket) ws = null;
+          if (currentJob === jobId && !isFinal(lastStatus)) startPolling(jobId);
+        };
+      }
+
+      function startPolling(jobId) {
+        stopPolling();
+        const tick = async () => {
+          try {
+            const res = await fetch(API + "/status/" + jobId);
+            if (!res.ok) {
+              if (res.status === 404) { stopPolling(); applyStatus({ job_id: jobId, status: "failed", progress: "0", error_message: "Job non trovato" }); }
+              return;
+            }
+            const s = await res.json();
+            applyStatus(s);
+            if (isFinal(s)) stopPolling();
+          } catch (e) { /* riprova */ }
+        };
+        tick();
+        pollTimer = setInterval(tick, 2000);
+      }
+      function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+      function closeSubscription() {
+        stopPolling();
+        if (ws) { const s = ws; ws = null; try { s.close(); } catch (e) { /* ignora */ } }
+      }
+
+      // ---------- Provider audio (façade /audio) ----------
+      function audioFormat() {
+        const f = selectedFormat();
+        if (f === MP3) return "mp3_" + selectedBitrate();
+        return "best"; // i formati video non hanno senso qui: formato nativo
+      }
+
+      function hostOf(url) { try { return new URL(url).hostname; } catch (e) { return ""; } }
+
+      function syncAudioMode() {
+        if (AUDIO_HOSTS.test(hostOf(urlInput.value.trim()))) audioMode.checked = true;
+        syncBandcampHint();
+      }
+
+      // Punto 9: su Bandcamp l'MP3 è lo stream a 128 kbps, non l'originale
+      function syncBandcampHint() {
+        const isBandcamp = /(^|\.)bandcamp\.com$/i.test(hostOf(urlInput.value.trim()));
+        $("bandcamp-mp3-hint").classList.toggle("hidden", !(isBandcamp && selectedFormat() === MP3));
+      }
+
+      async function startAudioTask(url) {
+        const format = audioFormat();
+        setBusy(true);
+        try {
+          const res = await fetch(API + "/audio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: url, format: format }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(extractError(data, res.status));
+          closeSubscription();
+          currentJob = null;
+          currentTask = data.task_id;
+          resetStatusPanel(currentTask, format === "best" ? "best" : MP3, format === "best" ? null : selectedBitrate());
+          progressHint.textContent = "Risoluzione delle tracce…";
+          startAudioPolling(currentTask);
+          toast("Task audio avviato.", "info", 3000);
+          statusCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (err) {
+          toast(err.message || "Errore di rete", "error", 6000);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function stopAudioPolling() { if (audioPollTimer) { clearInterval(audioPollTimer); audioPollTimer = null; } }
+
+      function startAudioPolling(taskId) {
+        stopAudioPolling();
+        const tick = async () => {
+          try {
+            const res = await fetch(API + "/audio/" + taskId);
+            if (!res.ok) {
+              if (res.status === 404) { stopAudioPolling(); applyAudioTask({ task_id: taskId, state: "failed", message: "Task non trovato", progress: 0 }); }
+              return;
+            }
+            const t = await res.json();
+            applyAudioTask(t);
+            if (t.state === "done" || t.state === "failed" || t.state === "partial") stopAudioPolling();
+          } catch (e) { /* riprova */ }
+        };
+        tick();
+        audioPollTimer = setInterval(tick, 1500);
+      }
+
+      function applyAudioTask(t) {
+        if (!t || t.task_id !== currentTask) return;
+        const pct = Math.max(0, Math.min(100, Math.round(parseFloat(t.progress) || 0)));
+        const badge = t.state === "running" ? "running" : t.state === "done" ? "completed"
+          : (t.state === "failed" || t.state === "partial") ? "failed" : "pending";
+        setBadge(badge);
+        if (t.state === "partial") { statusBadge.textContent = "parziale"; $("status-heading").textContent = "Download parziale"; }
+        progressBar.style.width = pct + "%";
+        progressText.textContent = pct + "%";
+        const counts = t.tracks_total ? t.tracks_done + "/" + t.tracks_total + " tracce" : "";
+        statusDetail.textContent = (t.provider ? "provider: " + t.provider : "") + (counts ? " · " + counts : "");
+        progressHint.textContent = t.state === "queued" ? "In coda" : t.state === "running" ? ("Download in corso" + (counts ? " · " + counts : "")) : "";
+        if (t.tracks_total) statusTitle.textContent = counts + (t.provider ? " da " + t.provider : "");
+
+        const urls = t.download_urls || [];
+        if (urls.length) {
+          downloadLink.href = urls[0];
+          downloadLink.setAttribute("download", (t.filenames || [])[0] || "");
+          resultName.textContent = urls.length === 1 ? ((t.filenames || [])[0] || "") : urls.length + " file";
+          resultSize.innerHTML = urls.length > 1
+            ? urls.map((u, i) => '<a href="' + esc(u) + '" download="' + esc((t.filenames || [])[i] || "") + '" style="display:block">' + esc((t.filenames || [])[i] || ("file " + (i + 1))) + "</a>").join("")
+            : "";
+          result.classList.remove("hidden");
+        }
+        if (t.state === "done") {
+          progress.className = "progress done";
+          progressHint.textContent = "Pronto per il download";
+          toast("Task completato: " + t.tracks_done + " tracce.", "ok");
+        } else if (t.state === "failed" || t.state === "partial") {
+          progress.className = t.state === "partial" ? "progress done" : "progress failed";
+          // l'hint (es. need_cookies con il comando esatto) non viene appiattito nel messaggio
+          const fails = (t.failures || []).map((f) => f.track + ": " + f.message + (f.hint ? " → " + f.hint : "")).join(" · ");
+          const abortHint = t.hint ? " → " + t.hint : "";
+          statusErrorText.textContent = ((t.message || "") + abortHint + (fails ? (t.message ? " — " : "") + fails : "")) || "Task fallito.";
+          statusError.classList.remove("hidden");
+          progressHint.textContent = t.state === "partial" ? "Completato con errori" : "Operazione interrotta";
+          toast(t.state === "partial" ? "Completato con errori." : "Task fallito.", "error", 7000);
+        }
+      }
+
+      // ---------- Elenco job ----------
+      function renderJobs(jobs) {
+        if (!jobs || !jobs.length) { jobsEl.innerHTML = ""; jobsEmpty.classList.remove("hidden"); return; }
+        jobsEmpty.classList.add("hidden");
+        jobsEl.innerHTML = jobs.map((j, i) => {
+          const pct = Math.max(0, Math.min(100, parseInt(j.progress, 10) || 0));
+          const label = j.title || j.url;
+          const statusLabel = j.status === "running" ? "in corso" : j.status === "completed" ? "completato" : j.status === "failed" ? "errore" : "in coda";
+          const link = j.download_url
+            ? '<a class="btn-mini" href="' + esc(j.download_url) + '" download="' + esc(j.filename || "") + '"><svg><use href="#i-down"/></svg>Scarica' + (j.size_bytes ? " · " + fmtSize(j.size_bytes) : "") + "</a>"
+            : "";
+          const prog = j.status === "running" ? '<div class="mini-progress"><div style="width:' + pct + '%"></div></div>' : "";
+          const err = j.status === "failed" && j.error_message ? '<div class="err" title="' + esc(j.error_message) + '">' + esc(j.error_message) + "</div>" : "";
+          const size = j.size_bytes && j.status === "completed" ? "" : "";
+          return '<article class="job" style="animation-delay:' + (i * 40) + 'ms">' +
+            '<div class="row"><span class="badge ' + esc(j.status) + '">' + statusLabel + (j.status === "running" ? " " + pct + "%" : "") + '</span><span class="meta">' + esc(timeAgo(j.created_at)) + "</span></div>" +
+            '<div class="title"><a href="' + esc(j.url) + '" target="_blank" rel="noopener noreferrer" title="' + esc(j.url) + '">' + esc(label) + "</a></div>" +
+            prog + err +
+            '<div class="meta"><span class="chip">' + esc(formatLabel(j.format, j.audio_bitrate)) + "</span><code>#" + esc(j.job_id.slice(0, 8)) + "</code>" + size + "</div>" +
+            '<div class="actions">' + link + "</div>" +
+            "</article>";
+        }).join("");
+      }
+
+      async function loadJobs() {
+        try {
+          const res = await fetch(API + "/jobs");
+          if (!res.ok) return;
+          const data = await res.json();
+          renderJobs(data.jobs || []);
+        } catch (e) { /* ignora */ }
+      }
+
+      async function runCleanup() {
+        const btn = $("cleanup-btn");
+        btn.disabled = true;
+        try {
+          const res = await fetch(API + "/cleanup", { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(extractError(data, res.status));
+          toast("Pulizia completata: " + (data.deleted_jobs || 0) + " job e " + (data.deleted_files || 0) + " file rimossi.", "ok");
+          loadJobs();
+        } catch (err) {
+          toast("Pulizia fallita: " + err.message, "error");
+        } finally { btn.disabled = false; }
+      }
+
+      async function pasteFromClipboard() {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim()) { urlInput.value = text.trim(); urlInput.focus(); }
+          else toast("Gli appunti sono vuoti.", "info", 2500);
+        } catch (e) {
+          toast("Impossibile leggere gli appunti: incolla manualmente (Ctrl+V).", "info", 4000);
+          urlInput.focus();
+        }
+      }
+
+      function syncBitrate() { bitrateGroup.classList.toggle("hidden", selectedFormat() !== MP3); }
+
+      // ---------- Eventi ----------
+      form.addEventListener("submit", startDownload);
+      form.addEventListener("change", (e) => { if (e.target && e.target.name === "format") { syncBitrate(); syncBandcampHint(); } });
+      $("paste-btn").addEventListener("click", pasteFromClipboard);
+      $("refresh-btn").addEventListener("click", () => { loadJobs(); checkHealth(); });
+      $("cleanup-btn").addEventListener("click", runCleanup);
+      urlInput.addEventListener("input", syncAudioMode);
+      urlInput.addEventListener("change", syncAudioMode);
+      window.addEventListener("beforeunload", () => { closeSubscription(); stopAudioPolling(); });
+
+      syncBitrate();
+      checkHealth();
+      loadJobs();
+      setInterval(loadJobs, 5000);
+      setInterval(checkHealth, 30000);
+    })();
+  </script>
+</body>
+</html>

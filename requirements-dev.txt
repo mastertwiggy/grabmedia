@@ -1,0 +1,15 @@
+# Sviluppo e test: come il runtime ma con yt-dlp in intervallo (per provare
+# versioni nuove prima di spostare il pin in requirements.txt). Le righe sono
+# duplicate apposta: includere requirements.txt porterebbe dentro il pin esatto.
+fastapi>=0.115,<1.0
+starlette>=1.10.0,<2
+uvicorn[standard]>=0.30
+pydantic>=2.7,<3.0
+redis>=5.0,<7.0
+rq>=2.0,<3.0
+spotipy>=2.24
+yt-dlp>=2026.10.26,<2027
+fakeredis>=2.26
+pytest>=8.0
+vcrpy>=6.0
+httpx>=0.27          # TestClient di FastAPI (solo test)

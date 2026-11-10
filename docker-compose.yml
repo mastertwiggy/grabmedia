@@ -1,0 +1,77 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: grabmedia-redis
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    image: grabmedia:latest
+    container_name: grabmedia-app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DOWNLOAD_DIR: /data/downloads
+      MAX_DOWNLOAD_SIZE_MB: ${MAX_DOWNLOAD_SIZE_MB:-500}
+      FILE_TTL_HOURS: ${FILE_TTL_HOURS:-24}
+      JOB_TIMEOUT_SECONDS: ${JOB_TIMEOUT_SECONDS:-1800}
+      BLOCK_PRIVATE_HOSTS: ${BLOCK_PRIVATE_HOSTS:-1}
+    volumes:
+      - downloads:/data/downloads
+    expose:
+      - "8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build: .
+    image: grabmedia:latest
+    container_name: grabmedia-worker
+    command: ["python", "-m", "app.worker"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DOWNLOAD_DIR: /data/downloads
+      MAX_DOWNLOAD_SIZE_MB: ${MAX_DOWNLOAD_SIZE_MB:-500}
+      FILE_TTL_HOURS: ${FILE_TTL_HOURS:-24}
+      JOB_TIMEOUT_SECONDS: ${JOB_TIMEOUT_SECONDS:-1800}
+      CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-3600}
+    volumes:
+      - downloads:/data/downloads
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: grabmedia-nginx
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  downloads:

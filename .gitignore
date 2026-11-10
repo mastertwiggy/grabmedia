@@ -1,0 +1,10 @@
+.env
+downloads/
+__pycache__/
+*.pyc
+.venv/
+downloads/state.sqlite3*
+config.local.toml
+downloads/spotify_cache.sqlite3*
+downloads/.spotify_token.json
+downloads/unmatched.log

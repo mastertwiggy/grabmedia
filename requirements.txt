@@ -1,0 +1,14 @@
+# Runtime unificato: web app (Docker) e CLI installano QUESTO file.
+# yt-dlp è pinnato esatto qui e solo qui (process_ie_result e js_runtimes
+# sono API interne): l'aggiornamento è una scelta esplicita, verificata dal
+# test d'integrazione. requirements-dev.txt usa un intervallo per provare
+# versioni più nuove.
+fastapi>=0.115,<1.0
+# starlette pinnato esatto: il seek dei file (/audio) dipende dal supporto Range di FileResponse
+starlette==1.10.0
+uvicorn[standard]>=0.30
+pydantic>=2.7,<3.0
+redis>=5.0,<7.0
+rq>=2.0,<3.0
+yt-dlp==2026.10.26
+spotipy>=2.24

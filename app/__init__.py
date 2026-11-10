@@ -1,0 +1,1 @@
+"""GrabMedia - pacchetto applicazione."""

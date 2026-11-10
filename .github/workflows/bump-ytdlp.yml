@@ -1,0 +1,249 @@
+name: Bump yt-dlp
+
+# Settimanale + manuale (workflow_dispatch). Bumpa yt-dlp all'ultima release
+# (pin esatto), esegue il test d'integrazione, la suite completa e il canary
+# con rete reale.
+# Verde -> PR con il solo bump e chiusura delle issue "canary" aperte.
+# Rosso -> il job fallisce con annotazione, i log vanno nel riepilogo del job e
+# in UNA issue con label "canary" (commento se ne esiste già una aperta,
+# altrimenti nuova issue); nessun merge.
+# Se l'ultima release esce dal range testato (<2027) il job fallisce con un
+# messaggio esplicito: lì il pin va rivisto a mano (vedi docs/upgrading-ytdlp.md).
+#
+# Struttura: UN SOLO job, quindi nessun "needs". Il reporting è garantito dagli
+# step finali con "if: always()": girano anche quando uno step precedente
+# fallisce in modo secco (installazione, range, setup), non solo quando
+# falliscono gli step con continue-on-error (suite, runtime, canary).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # lunedì 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versione da pinnare (vuoto = ultima release su PyPI)"
+        required: false
+        default: ""
+      force_checks:
+        description: "Esegui suite e canary anche se non c'è nessun bump (verifica del workflow)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: bump-ytdlp
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  RANGE_UPPER: "2027"   # limite superiore testato: oltre questo NON si bumpa in automatico
+  CANARY_LABEL: canary
+  GH_REPO: ${{ github.repository }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest   # runner con rete: PyPI, YouTube (canary)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Runtime JS per yt-dlp (action ufficiale di deno)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: ffmpeg presente sul runner
+        run: ffmpeg -version | head -1
+
+      - name: Determina versione corrente e ultima release
+        id: versions
+        run: |
+          set -euo pipefail
+          current=$(grep -oP '^yt-dlp==\K\S+' requirements.txt)
+          if [ -n "${{ inputs.version }}" ]; then
+            latest="${{ inputs.version }}"
+          else
+            latest=$(python - <<'EOF'
+          import json, urllib.request
+          data = json.load(urllib.request.urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=30))
+          print(data["info"]["version"])
+          EOF
+          )
+          fi
+          changed=false
+          if [ "$current" != "$latest" ]; then changed=true; fi
+          run=$changed
+          if [ "${{ inputs.force_checks }}" = "true" ]; then run=true; fi
+          {
+            echo "current=$current"
+            echo "latest=$latest"
+            echo "changed=$changed"
+            echo "run=$run"
+          } >> "$GITHUB_OUTPUT"
+          echo "Corrente: $current  Candidata: $latest  bump: $changed  controlli: $run"
+
+      - name: Fermati se la versione esce dal range testato
+        if: steps.versions.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          latest="${{ steps.versions.outputs.latest }}"
+          year="${latest%%.*}"
+          if [ "$year" -ge "${RANGE_UPPER}" ]; then
+            echo "::error::yt-dlp ${latest} è FUORI dal range testato (<${RANGE_UPPER}). Il pin va rivisto a mano: aggiorna il range in requirements-cli.txt e requirements-dev.txt, esegui i test d'integrazione e aggiorna docs/upgrading-ytdlp.md. Nessun bump automatico."
+            exit 1
+          fi
+
+      - name: Nessun controllo necessario
+        if: steps.versions.outputs.run != 'true'
+        run: |
+          echo "yt-dlp è già alla versione ${{ steps.versions.outputs.latest }}, niente da fare (usa force_checks per verificare comunque)."
+
+      - name: Applica il bump (pin esatto in requirements.txt)
+        if: steps.versions.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          sed -i "s/^yt-dlp==.*/yt-dlp==${{ steps.versions.outputs.latest }}/" requirements.txt
+          grep -n "^yt-dlp==" requirements.txt
+
+      - name: Installa dipendenze di test con la versione pinnata
+        if: steps.versions.outputs.run == 'true'
+        run: |
+          python -m pip install -q -r requirements-dev.txt
+          python -m pip install -q "yt-dlp==${{ steps.versions.outputs.latest }}"
+          python -c "import yt_dlp.version as v; print('yt-dlp', v.__version__)"
+
+      - name: Test d'integrazione (process_ie_result) + suite completa
+        if: steps.versions.outputs.run == 'true'
+        id: suite
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pytest tests -q -p no:cacheprovider -o faulthandler_timeout=120 --deselect tests/test_canary_youtube.py 2>&1 | tee suite.log
+
+      - name: Canary - runtime JS rilevato (deno --version + riga di rilevamento di yt-dlp)
+        if: steps.versions.outputs.run == 'true'
+        id: runtime
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          {
+            deno_line=$(deno --version 2>&1 | head -1 || true)
+            echo "deno --version: ${deno_line:-<nessun output>}"
+            if ! echo "$deno_line" | grep -qE '^deno [0-9]+\.[0-9]+'; then
+              echo "::error::Nessun runtime JS: 'deno --version' non riporta una versione (output: '${deno_line}')"
+              exit 1
+            fi
+            # yt-dlp stampa "[debug] JS runtimes: ..." nell'header verbose, senza rete
+            runtime_line=$(python -m yt_dlp -v 2>&1 | grep -m1 "JS runtimes:" || true)
+            echo "yt-dlp: ${runtime_line:-<riga assente>}"
+            if [ -z "$runtime_line" ] || echo "$runtime_line" | grep -qiE "JS runtimes:[[:space:]]*none"; then
+              echo "::error::yt-dlp non rileva nessun runtime JS (riga: '${runtime_line:-assente}'): il canary non è attendibile"
+              exit 1
+            fi
+          } 2>&1 | tee runtime.log
+
+      - name: Canary - YouTube con rete reale (deve girare davvero, non saltare)
+        if: steps.versions.outputs.run == 'true'
+        id: canary
+        continue-on-error: true
+        env:
+          GRABMEDIA_CANARY: "1"   # esplicito: senza, il canary è saltabile (solo in locale)
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_canary_youtube.py -q -p no:cacheprovider -rA 2>&1 | tee canary.log
+          # anti-skip: un canary saltato o non raccolto è un fallimento del job
+          if grep -qE "(^|[^a-z])[0-9]+ skipped|no tests ran|collected 0 items" canary.log; then
+            echo "::error::Il canary YouTube NON è stato eseguito (skip o nessun test raccolto): controlla GRABMEDIA_CANARY e tests/test_canary_youtube.py"
+            exit 1
+          fi
+          grep -qE "[0-9]+ passed" canary.log || { echo "::error::Il canary non riporta test passati"; exit 1; }
+
+      - name: Verde - apri la PR con il solo bump
+        if: steps.versions.outputs.changed == 'true' && steps.suite.outcome == 'success' && steps.runtime.outcome == 'success' && steps.canary.outcome == 'success'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bump/yt-dlp-${{ steps.versions.outputs.latest }}
+          add-paths: requirements.txt
+          commit-message: "build: bump yt-dlp ${{ steps.versions.outputs.current }} -> ${{ steps.versions.outputs.latest }}"
+          title: "Bump yt-dlp ${{ steps.versions.outputs.current }} -> ${{ steps.versions.outputs.latest }}"
+          body: |
+            Bump automatico del pin esatto di `yt-dlp` in `requirements.txt`.
+
+            - Suite completa: verde
+            - Test d'integrazione `process_ie_result`: verde
+            - Runtime JS rilevato (deno + riga `JS runtimes:` di yt-dlp): verde
+            - Canary YouTube (nessun fallback di signature, formato 251 o 140, pavimento 100 kbps): verde
+
+            Procedura e rollback: `docs/upgrading-ytdlp.md`.
+          labels: dependencies, yt-dlp
+
+      - name: Verde - chiudi le issue canary aperte
+        if: steps.versions.outputs.run == 'true' && steps.suite.outcome == 'success' && steps.runtime.outcome == 'success' && steps.canary.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for number in $(gh issue list --label "$CANARY_LABEL" --state open --json number --jq '.[].number'); do
+            gh issue close "$number" --comment "Run verde con yt-dlp ${{ steps.versions.outputs.latest }}: $RUN_URL. Chiudo."
+          done
+
+      - name: Riepilogo del job (sempre)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Bump yt-dlp: ${{ steps.versions.outputs.current || '?' }} -> ${{ steps.versions.outputs.latest || '?' }} (stato del job: ${{ job.status }})"
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "- Bump necessario: **${{ steps.versions.outputs.changed || 'non determinato' }}**, controlli eseguiti: **${{ steps.versions.outputs.run || 'non determinato' }}**"
+            echo "- Suite completa: **${{ steps.suite.outcome || 'non eseguita' }}**"
+            echo "- Runtime JS rilevato: **${{ steps.runtime.outcome || 'non eseguito' }}**"
+            echo "- Canary YouTube: **${{ steps.canary.outcome || 'non eseguito' }}**"
+            echo
+            echo "Procedura manuale e rollback: docs/upgrading-ytdlp.md"
+            for log in suite.log runtime.log canary.log; do
+              if [ -f "$log" ]; then
+                echo
+                echo "<details><summary>${log} (coda)</summary>"; echo; echo '```'
+                tail -c 6000 "$log"
+                echo '```'; echo "</details>"
+              fi
+            done
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rosso - issue canary deduplicata per label (sempre, se qualcosa è fallito)
+        if: ${{ always() && (failure() || steps.suite.outcome == 'failure' || steps.runtime.outcome == 'failure' || steps.canary.outcome == 'failure') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          [ -f report.md ] || echo "Bump yt-dlp fallito prima del riepilogo. Run: $RUN_URL" > report.md
+          # label creata dal workflow se assente
+          if ! gh label list --limit 200 --json name --jq '.[].name' | grep -qx "$CANARY_LABEL"; then
+            gh label create "$CANARY_LABEL" --color B60205 --description "Canary yt-dlp/YouTube rosso (job di bump)"
+          fi
+          # deduplica per label: una sola issue aperta, i run successivi commentano
+          existing=$(gh issue list --label "$CANARY_LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file report.md
+            echo "Commentata la issue canary #$existing"
+          else
+            gh issue create --label "$CANARY_LABEL" --body-file report.md \
+              --title "Canary rosso: yt-dlp ${{ steps.versions.outputs.latest || '?' }} (suite: ${{ steps.suite.outcome || 'n/d' }}, runtime: ${{ steps.runtime.outcome || 'n/d' }}, canary: ${{ steps.canary.outcome || 'n/d' }})"
+          fi
+          echo "::error::Bump yt-dlp ${{ steps.versions.outputs.latest || '?' }} fallito (suite: ${{ steps.suite.outcome || 'n/d' }}, runtime: ${{ steps.runtime.outcome || 'n/d' }}, canary: ${{ steps.canary.outcome || 'n/d' }}). Dettagli nel riepilogo del job e nella issue con label ${CANARY_LABEL}."
+          exit 1

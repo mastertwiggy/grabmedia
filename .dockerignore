@@ -1,0 +1,9 @@
+.git
+.env
+downloads/
+__pycache__/
+*.pyc
+.venv/
+nginx/
+docker-compose.yml
+README.md

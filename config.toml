@@ -1,0 +1,75 @@
+# Configurazione del core di GrabMedia (CLI). Le credenziali NON vanno qui: usa .env.
+
+[general]
+# Cartella radice dei download (relativa a questo file se non assoluta).
+out_dir = "downloads/music"
+# Template del percorso: i "/" creano sottocartelle. Placeholder disponibili:
+# {artist} {albumartist} {album} {title} {track_no} {disc_no} {year}
+# Le format spec funzionano ({track_no:02d}); i campi nulli diventano vuoti
+# e i segmenti vuoti vengono saltati.
+naming = "{artist}/{album}/{track_no:02d} - {title}"
+# Se false, le tracce già presenti (file o stato SQLite) vengono saltate.
+overwrite = false
+# Database SQLite con lo stato per traccia (resume).
+state_db = "downloads/state.sqlite3"
+
+[priority]
+# Ordine con cui i provider vengono interrogati per can_handle(url):
+# il primo che risponde true vince. I provider non elencati vengono dopo,
+# in ordine alfabetico. Il nome è quello del modulo in sources/<nome>.py.
+order = []
+
+[concurrency]
+# Download simultanei per provider. "default" vale per chi non è elencato.
+default = 2
+# esempio: nome_provider = 4
+
+[quality]
+# Qualità richiesta a ciascun provider (stringa interpretata dal provider).
+default = "best"
+# esempio: nome_provider = "320k"
+
+[retry]
+# Tentativi totali per operazione (resolve/download) su 429 e 5xx.
+max_attempts = 4
+# Backoff esponenziale: base * 2^(tentativo-1), limitato a cap, con jitter ±50%.
+backoff_base = 1.0
+backoff_cap = 30.0
+# Circuit breaker: dopo N errori consecutivi il provider viene sospeso per cooldown secondi.
+circuit_threshold = 5
+circuit_cooldown = 60.0
+
+[options]
+# Impostazioni specifiche di un provider: tabella [options.<nome>], passata al
+# suo costruttore. Le chiavi che finiscono in "file", "_location", "_path" o
+# "_dir" vengono risolte come percorsi relativi a questo file.
+# Esempio per un provider basato su yt-dlp:
+# [options.youtube]
+# cookiefile = "cookies.txt"          # cookie esportati dal browser (formato Netscape)
+# ffmpeg_location = "C:/ffmpeg/bin"   # se ffmpeg non è nel PATH
+
+# Provider Spotify (solo metadati: l'audio arriva da audio_provider).
+# Le credenziali stanno in .env (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI).
+[options.spotify]
+auth = "client_credentials"      # "client_credentials" (catalogo pubblico) oppure "pkce" (playlist private, brani salvati)
+# audio_provider = "youtube"     # provider a cui delegare l'audio; vuoto = primo con ricerca in [priority]
+# market = "IT"                  # codice paese ISO 3166-1; con "pkce" default = paese dell'utente
+fetch_isrc = false               # true: recupera gli ISRC con GET /tracks?ids= a lotti da 50
+unmatched_threshold = 0.72       # sotto questo punteggio non si scarica e si scrive in unmatched.log
+unmatched_log_file = "downloads/unmatched.log"
+cache_path = "downloads/spotify_cache.sqlite3"
+cache_ttl_days = 7
+token_cache_path = "downloads/.spotify_token.json"   # solo "pkce"
+
+# SoundCloud (yt-dlp): brani, set, profili; accetta deleghe con ricerca scsearch.
+[options.soundcloud]
+# cookiefile = "cookies.txt"
+# ffmpeg_location = "C:/ffmpeg/bin"
+match_threshold = 0.72
+search_results = 10               # risultati scsearch (una sola chiamata API)
+max_full_tracks = 150            # set più grandi: metadati completi ma senza riuso degli stream (meno memoria)
+
+# Bandcamp: pagine album/brano; download diretto se il brano è scaricabile, altrimenti yt-dlp.
+[options.bandcamp]
+# cookiefile = "cookies.txt"      # per contenuti acquistati/riservati
+# ffmpeg_location = "C:/ffmpeg/bin"
