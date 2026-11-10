@@ -234,6 +234,29 @@ def run_worker(argv: list[str]) -> None:
     worker_mod.main()
 
 
+def preload_redis_commands() -> bool:
+    """Carica la tabella dei comandi del Redis in memoria con un percorso normalizzato.
+
+    fakeredis apre ``.../fakeredis/model/../commands.json``. Nella ``.app`` di macOS
+    la cartella ``model`` non esiste su disco (i moduli stanno nell'archivio) e su
+    macOS/Linux un percorso che attraversa una cartella inesistente fallisce: il
+    programma non partiva (visto nella build reale). Windows lo normalizza da sé.
+    Restituisce ``True`` se la tabella è disponibile.
+    """
+    import json
+
+    try:
+        from fakeredis.model import _command_info as info
+
+        if info._COMMAND_INFO is None:
+            path = Path(info.__file__).parent.parent / "commands.json"
+            with open(path, encoding="utf8") as fh:
+                info._COMMAND_INFO = info._encode_obj(json.load(fh))
+        return bool(info._COMMAND_INFO)
+    except Exception:  # noqa: BLE001 - struttura interna cambiata: fakeredis farà a modo suo
+        return False
+
+
 # ------------------------------------------------------------- autocontrollo
 REQUIRED_PROVIDERS = ("bandcamp", "generic", "soundcloud", "spotify", "spotify_embed", "youtube")
 
@@ -287,6 +310,17 @@ def self_check() -> dict:
     except Exception:  # noqa: BLE001
         report["yt_dlp_ejs"] = False
         report["problems"].append("script yt-dlp-ejs mancanti (firme di YouTube)")
+    # Redis in memoria: deve riuscire a creare un server vero (non basta importarlo)
+    try:
+        from fakeredis import TcpFakeServer
+
+        preload_redis_commands()
+        server = TcpFakeServer(("127.0.0.1", free_port()), server_type="redis", server_version=(7, 2))
+        server.server_close()
+        report["redis"] = True
+    except Exception as exc:  # noqa: BLE001
+        report["redis"] = False
+        report["problems"].append(f"Redis in memoria non avviabile: {type(exc).__name__}: {exc}")
     try:
         from app.main import FRONTEND_INDEX
 
@@ -331,6 +365,7 @@ class Backend:
             env = prepare_environment(self.redis_port)
             from fakeredis import TcpFakeServer
 
+            preload_redis_commands()
             self._redis = TcpFakeServer(("127.0.0.1", self.redis_port), server_type="redis", server_version=(7, 2))
             threading.Thread(target=self._redis.serve_forever, daemon=True, name="fakeredis").start()
             for _ in range(50):

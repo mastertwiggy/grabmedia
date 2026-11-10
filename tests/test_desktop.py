@@ -185,6 +185,28 @@ def test_no_auth_mode_is_opt_in_and_local_only(monkeypatch):
     assert "data.auth_required === false" in page
 
 
+def test_redis_commands_are_loaded_without_the_model_folder(monkeypatch, tmp_path: Path):
+    """Nella .app di macOS ``fakeredis/model`` non esiste su disco e fakeredis apre
+    ``model/../commands.json``: il programma non partiva (build reale su macOS)."""
+    pytest.importorskip("fakeredis")
+    import shutil
+
+    from fakeredis.model import _command_info as info
+
+    package = tmp_path / "fakeredis"
+    package.mkdir()
+    shutil.copy2(Path(info.__file__).parent.parent / "commands.json", package / "commands.json")
+    monkeypatch.setattr(info, "__file__", str(package / "model" / "_command_info.pyc"))  # "model" non esiste
+    monkeypatch.setattr(info, "_COMMAND_INFO", None)
+    assert not (package / "model").exists()
+    assert gd.preload_redis_commands() is True
+    assert info.get_command_info(b"get") is not None  # tabella già pronta: fakeredis non riapre il file
+    # struttura interna diversa o file assente: nessuna eccezione, si lascia fare a fakeredis
+    monkeypatch.setattr(info, "_COMMAND_INFO", None)
+    monkeypatch.setattr(info, "__file__", str(tmp_path / "altrove" / "model" / "x.pyc"))
+    assert gd.preload_redis_commands() is False
+
+
 def test_headless_mode_stops_cleanly_on_sigterm():
     """Su macOS/Linux "termina" arriva come SIGTERM: deve fermare server e worker
     come Ctrl+C, non lasciare il worker senza padre."""
@@ -227,6 +249,7 @@ def test_self_check_reports_missing_pieces(clean_env, monkeypatch, tmp_path: Pat
     assert report["ok"] is False and report["ffmpeg"] is None and report["deno"] is None
     assert any("ffmpeg" in p for p in report["problems"]) and any("deno" in p for p in report["problems"])
     assert report["frontend"] is True and report["yt_dlp"] and report["yt_dlp_ejs"] is True
+    assert report["redis"] is True  # il server Redis in memoria si crea davvero
 
     monkeypatch.setattr(gd, "_tool_version", lambda path, flag: "versione 1")
     monkeypatch.setattr(registry, "available_modules", lambda: ["youtube"])
