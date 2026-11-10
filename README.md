@@ -116,13 +116,15 @@ python -m core --dry-run "https://..."
 python -m core --provider <nome> --quality 320k "https://..."
 ```
 
-Test (senza rete): `python -m pytest tests -q`.
+Installazione della CLI: `pip install -r requirements-cli.txt` (stesso runtime della web app). Servono ffmpeg nel PATH e, per YouTube, un runtime JavaScript (deno o node); senza, la CLI esce con le istruzioni di installazione, salvo `--allow-no-js-runtime`.
+
+Test (senza rete): `pip install -r requirements-dev.txt` e poi `python -m pytest tests -q`. Il test d'integrazione salta se manca ffmpeg; il canary YouTube gira solo con `GRABMEDIA_CANARY=1`.
 
 ### Provider disponibili
 
 | Provider | URL | Delega (ricerca) | Note |
 |---|---|---|---|
-| `youtube` | youtube.com, youtu.be, music.youtube.com (video, playlist, album, canali) | sì: cerca "artista titolo" e sceglie con `sources/matching.py` | richiede yt-dlp e ffmpeg |
+| `youtube` | youtube.com, youtu.be, music.youtube.com (video, playlist, album, canali) | sì: cerca "artista titolo" e sceglie con `sources/matching.py` | richiede ffmpeg, un runtime JS (deno) e `yt-dlp-ejs`, che arriva con `yt-dlp[default]` |
 | `generic` | qualsiasi http/https che nessun altro provider rivendica | no | passthrough yt-dlp, mai scelto come `audio_provider` |
 
 Qualità (`[quality]` o `--quality`): `best` (default: formato nativo, nessuna transcodifica), `m4a`, `mp3`, `mp3_320`, `320k`, `opus`, `vorbis`, `flac`, `wav`, `alac`. Vedi "Qualità e formati".
@@ -145,11 +147,19 @@ Le tracce senza match affidabile (sotto `unmatched_threshold`) finiscono in `unm
 python -m core --dry-run "https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy"
 ```
 
+Smoke test reale (richiede le credenziali in `.env`): risolve una playlist pubblica, registra le risposte in una cassetta vcrpy con i token oscurati e confronta campo per campo la forma delle risposte reali con le fixture dei test offline. Esce con 1 se un campo letto dal provider manca o ha un altro tipo.
+
+```bash
+python scripts/spotify_smoke.py "https://open.spotify.com/playlist/<id>"
+```
+
+Questo confronto non è ancora stato eseguito con credenziali reali: le fixture di `tests/test_spotify.py` sono sintetiche.
+
 ### SoundCloud e Bandcamp
 
 | Provider | URL | Delega (ricerca) | Note |
 |---|---|---|---|
-| `soundcloud` | soundcloud.com, m.soundcloud.com, on.soundcloud.com (brani, set, profili) | sì: `scsearch5:` + matcher | i 429 sono retryable: backoff e breaker del core |
+| `soundcloud` | soundcloud.com, m.soundcloud.com, on.soundcloud.com (brani, set, profili) | sì: `scsearch10:` (estrazione piatta) + matcher | i 429 sono retryable: backoff e breaker del core |
 | `bandcamp` | `<artista>.bandcamp.com/album/...` e `/track/...` | no | legge `data-tralbum`; brani scaricabili → file diretto, altrimenti yt-dlp |
 
 Opzioni in `[options.soundcloud]` (`cookiefile`, `ffmpeg_location`, `match_threshold`, `search_results`) e `[options.bandcamp]` (`cookiefile`, `ffmpeg_location`).
@@ -174,5 +184,14 @@ Nota Bandcamp: alle richieste dirette il sito può rispondere con una pagina di 
 - **Cookie**: `--cookies <file Netscape>` e `--cookies-from-browser <browser[+keyring][:profilo]>` (CLI) o gli stessi parametri di `resolve`/`download`/`TaskQueue` nella façade valgono per tutti i provider; per provider resta `cookiefile` / `cookiesfrombrowser` in `[options.<nome>]`. Un 403 con verifica anti-bot è terminale (`NeedsCookies`): nessun retry finché non fornisci i cookie.
 - **/audio**: Basic Auth sugli endpoint stessi (credenziali da `GRABMEDIA_AUTH_USER`/`GRABMEDIA_AUTH_PASSWORD` oppure da `nginx/.htpasswd`, formato `{SHA}`), path dei file risolto e confinato nella cartella di output (symlink compresi), `Range` con 206/416 tramite Starlette.
 - **Anti-SSRF**: la façade risolve l'host e rifiuta loopback, privati, link-local, riservati (anche IPv6 e IPv4-mapped); host non risolvibili passano al provider. Nessuna allowlist.
-- **Pin**: `yt-dlp==2026.10.26` solo in `requirements.txt` (runtime unico di app e CLI); `requirements-dev.txt` usa un intervallo per provare versioni nuove; il Dockerfile non fa più `--upgrade yt-dlp`.
-- **Runtime JS**: `YTDLP_JS_RUNTIME` verso un binario inesistente produce un warning e si passa al rilevamento automatico; la web app senza runtime parte comunque e disabilita il provider YouTube.
+- **Pin**: `yt-dlp[default]==2026.10.26` e `starlette==1.10.0` solo in `requirements.txt` (runtime unico di app e CLI); `requirements-dev.txt` usa intervalli per provare versioni nuove; il Dockerfile non fa più `--upgrade yt-dlp`. L'extra `[default]` porta `yt-dlp-ejs`, senza cui la signature di YouTube non si risolve nemmeno con deno.
+- **Runtime JS**: rilevato all'avvio (`YTDLP_JS_RUNTIME`, poi deno, poi node) e passato a yt-dlp. `YTDLP_JS_RUNTIME` verso un binario inesistente produce un warning e si passa al rilevamento automatico; la web app senza runtime parte comunque e disabilita il provider YouTube, con le istruzioni di installazione nel messaggio. L'immagine Docker non include ancora deno.
+- **Cookie del browser**: risolti una volta per sessione in un file Netscape nella directory dedicata (`GRABMEDIA_COOKIE_DIR`), nome con il pid, scadenza a 6 ore, pulizia all'uscita e su SIGTERM/SIGINT, sweep degli orfani all'avvio. Rinnovo esplicito: `--renew-cookies`, `renew_browser_cookies()` nella façade, `POST /audio/cookies/renew`.
+
+### CI: job di bump di yt-dlp
+
+`.github/workflows/bump-ytdlp.yml` gira ogni lunedì e a richiesta. Prova l'ultima release di yt-dlp con suite completa, verifica del runtime JS e canary YouTube con rete reale; se è verde apre una PR con il solo bump, se è rosso apre o commenta una sola issue con label `canary` e non mergia niente. Procedura, gate del canary e rollback sono in [docs/upgrading-ytdlp.md](docs/upgrading-ytdlp.md).
+
+```bash
+gh workflow run bump-ytdlp.yml -f force_checks=true
+```
