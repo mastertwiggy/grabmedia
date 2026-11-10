@@ -259,6 +259,7 @@ class SoundcloudSource(AudioSource):
         best, score = matching.pick(
             query, candidates, track.duration_ms,
             artist=track.artist or None, title=track.title, threshold=threshold,
+            artists=track.artists or None,  # basta uno degli artisti a confermare il candidato
         )
         if best is None:
             raise NoMatch(

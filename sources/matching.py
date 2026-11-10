@@ -130,8 +130,48 @@ def _uploader(candidate: Mapping[str, Any]) -> str:
     return ""
 
 
+def _artist_names(artist: str | None, artists: Sequence[str] | None) -> list[str]:
+    """Artisti del brano cercato, normalizzati. ``artists`` (lista) è la forma
+    giusta per i brani con più artisti: ne basta UNO per confermare il
+    candidato. ``artist`` (stringa unica) resta per compatibilità e non viene
+    spezzata, perché esistono nomi con la virgola."""
+    names = [a for a in (artists or []) if a] or ([artist] if artist else [])
+    seen: list[str] = []
+    for name in names:
+        plain = _plain(name)
+        if plain and plain not in seen:
+            seen.append(plain)
+    return seen
+
+
+def _candidate_artists_plain(candidate: Mapping[str, Any]) -> str:
+    """Metadati musicali del candidato (``artists``/``artist``/``creator``): nei
+    video "Topic" generati automaticamente il canale può avere un nome qualsiasi
+    (es. "Release - Topic") mentre l'artista vero sta qui."""
+    parts: list[str] = []
+    value = candidate.get("artists")
+    if isinstance(value, (list, tuple)):
+        parts.extend(str(v) for v in value if v)
+    elif value:
+        parts.append(str(value))
+    for key in ("artist", "creator"):
+        if candidate.get(key):
+            parts.append(str(candidate[key]))
+    return _plain(" | ".join(parts))
+
+
+def artist_confirmed(candidate: Mapping[str, Any], artist: str | None = None,
+                     artists: Sequence[str] | None = None) -> bool:
+    """Uno degli artisti del brano combacia con il canale o con i metadati
+    musicali del candidato (conferma forte, più del nome nel titolo)."""
+    uploader_plain = _plain(_uploader(candidate))
+    meta_plain = _candidate_artists_plain(candidate)
+    return any(_artist_present(name, uploader_plain) or _artist_present(name, meta_plain)
+               for name in _artist_names(artist, artists))
+
+
 def uploader_matches(candidate: Mapping[str, Any], artist: str | None) -> bool:
-    return _artist_present(_plain(artist), _plain(_uploader(candidate)))
+    return artist_confirmed(candidate, artist)
 
 
 def duration_delta_ms(candidate: Mapping[str, Any], want_duration_ms: int | None) -> int | None:
@@ -148,9 +188,14 @@ def score(
     *,
     artist: str | None = None,
     title: str | None = None,
+    artists: Sequence[str] | None = None,
 ) -> float:
     """Punteggio grezzo di un singolo candidato (non limitato a [0, 1]: i bonus
-    devono poter distinguere due candidati altrimenti identici)."""
+    devono poter distinguere due candidati altrimenti identici).
+
+    Artista: basta UNO degli artisti del brano (``artists``), confermato dal
+    canale o dai metadati musicali del candidato (bonus pieno) oppure presente
+    nel titolo (bonus ridotto); se non compare da nessuna parte, penalità."""
     q_title = normalize(title or query)
     q_full = normalize(query)
     q_plain = _plain(query) + " " + _plain(title)
@@ -160,11 +205,12 @@ def score(
 
     value = max(similarity(q_title, c_title), similarity(q_full, c_title))
 
-    artist_norm = _plain(artist)
-    if artist_norm:
-        if _artist_present(artist_norm, uploader_plain):
+    names = _artist_names(artist, artists)
+    confirmed = artist_confirmed(candidate, artist, artists) if names else False
+    if names:
+        if confirmed:
             value += ARTIST_IN_UPLOADER_BONUS
-        elif _artist_present(artist_norm, c_plain):
+        elif any(_artist_present(name, c_plain) for name in names):
             value += ARTIST_IN_TITLE_BONUS
         else:
             value -= ARTIST_MISSING_PENALTY
@@ -182,7 +228,7 @@ def score(
             value -= BAD_VERSION_PENALTY
             break
 
-    if uploader_plain and not (artist_norm and _artist_present(artist_norm, uploader_plain)):
+    if uploader_plain and not confirmed:
         if any(_contains_term(uploader_plain, term) for term in AGGREGATOR_TERMS):
             value -= AGGREGATOR_PENALTY
 
@@ -198,6 +244,7 @@ def pick(
     title: str | None = None,
     threshold: float = DEFAULT_THRESHOLD,
     min_margin: float = MIN_MARGIN,
+    artists: Sequence[str] | None = None,
 ) -> tuple[dict[str, Any] | None, float]:
     """Miglior candidato e punteggio (limitato a [0, 1]); ``(None, migliore)``
     sotto soglia.
@@ -212,8 +259,8 @@ def pick(
     for index, candidate in enumerate(candidates or ()):
         if not candidate or not candidate.get("title"):
             continue
-        value = score(query, candidate, want_duration_ms, artist=artist, title=title)
-        up = uploader_matches(candidate, artist) if artist else False
+        value = score(query, candidate, want_duration_ms, artist=artist, title=title, artists=artists)
+        up = artist_confirmed(candidate, artist, artists)
         delta = duration_delta_ms(candidate, want_duration_ms)
         ranked.append((value, up, float("inf") if delta is None else float(delta), index, candidate))
     if not ranked:
