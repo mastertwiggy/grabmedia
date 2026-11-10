@@ -123,9 +123,12 @@ def test_explicit_renewal_cli_facade_and_endpoint(fake_browser, fake_sources, tm
     monkeypatch.setenv("GRABMEDIA_AUTH_USER", "t")
     monkeypatch.setenv("GRABMEDIA_AUTH_PASSWORD", "p")
     third = Path(_ytdlp.browser_cookie_file("chrome"))
+    main._SESSIONS.clear()        # noqa: SLF001
+    main._LOGIN_FAILURES.clear()  # noqa: SLF001
     client = TestClient(main.app)
-    assert client.post("/audio/cookies/renew").status_code == 401
-    r = client.post("/audio/cookies/renew", auth=("t", "p"))
+    assert client.post("/audio/cookies/renew").status_code == 401  # senza sessione
+    assert client.post("/login", json={"username": "t", "password": "p"}).status_code == 200
+    r = client.post("/audio/cookies/renew")
     assert r.status_code == 200 and r.json()["renewed"] is True and r.json()["removed_files"] >= 1
     assert not third.exists()
 

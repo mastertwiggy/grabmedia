@@ -8,3 +8,4 @@ config.local.toml
 downloads/spotify_cache.sqlite3*
 downloads/.spotify_token.json
 downloads/unmatched.log
+.claude/

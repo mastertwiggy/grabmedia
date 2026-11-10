@@ -174,6 +174,17 @@
     /* ---------- Pillole formato ---------- */
     .opts { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 16px; }
     .opt-group { display: flex; flex-direction: column; gap: 8px; }
+    .auth-note { margin: 0 0 12px; color: var(--text-dim); font-size: 13.5px; }
+    .auth-fields { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+    .auth-fields input {
+      flex: 1 1 160px; min-width: 0; padding: 12px 14px; border-radius: 12px; font: inherit;
+      color: var(--text); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--card-border); outline: none;
+    }
+    .auth-fields input:focus { border-color: rgba(45, 212, 191, 0.7); box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.14); }
+    .auth-fields input::placeholder { color: var(--text-faint); }
+    .auth-form .alert { margin-top: 12px; }
+    .auth-connected { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--text-dim); }
+    .auth-connected strong { color: var(--text); }
     .opt-group label.lbl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
     .pills { display: flex; flex-wrap: wrap; gap: 6px; }
     .pills input { position: absolute; opacity: 0; pointer-events: none; }
@@ -435,6 +446,27 @@
         </form>
       </section>
 
+      <!-- Accesso all'area Provider audio: compare solo quando /audio risponde 401 (o a sessione attiva) -->
+      <section class="card hidden" id="auth-card" aria-live="polite">
+        <div class="card-head">
+          <h2><svg><use href="#i-info"/></svg><span id="auth-heading">Accesso a Provider audio</span></h2>
+          <span class="badge pending hidden" id="auth-badge">connesso</span>
+        </div>
+        <form id="auth-form" class="auth-form" autocomplete="on">
+          <p class="auth-note">Per album, playlist e link Spotify serve l'accesso. I download normali non lo richiedono.</p>
+          <div class="auth-fields">
+            <input type="text" id="auth-user" name="username" placeholder="Utente" autocomplete="username" required maxlength="128">
+            <input type="password" id="auth-pass" name="password" placeholder="Password" autocomplete="current-password" required maxlength="256">
+            <button type="submit" class="btn-primary" id="auth-submit"><span>Accedi</span></button>
+          </div>
+          <div class="alert error hidden" id="auth-error"><svg><use href="#i-alert"/></svg><span id="auth-error-text"></span></div>
+        </form>
+        <div class="auth-connected hidden" id="auth-connected">
+          <span>Connesso come <strong id="auth-username"></strong></span>
+          <button type="button" class="ghost" id="auth-logout">Esci</button>
+        </div>
+      </section>
+
       <!-- Stato -->
       <section class="card hidden" id="status-card">
         <div class="card-head">
@@ -508,6 +540,13 @@
       const health = $("health");
       const healthText = $("health-text");
       const audioMode = $("audio-mode");
+      const authCard = $("auth-card");
+      const authForm = $("auth-form");
+      const authConnected = $("auth-connected");
+      const authError = $("auth-error");
+      const authErrorText = $("auth-error-text");
+      const authBadge = $("auth-badge");
+      let pendingAudioUrl = null;
       const AUDIO_HOSTS = /(^|\.)(open\.spotify\.com|soundcloud\.com|on\.soundcloud\.com|bandcamp\.com)$/i;
 
       let currentJob = null;
@@ -720,6 +759,85 @@
         if (ws) { const s = ws; ws = null; try { s.close(); } catch (e) { /* ignora */ } }
       }
 
+      // ---------- Accesso a Provider audio (sessione a cookie) ----------
+      // Le credenziali vanno solo a POST /login; il server risponde con un cookie
+      // HttpOnly che il JS non può leggere. Niente viene salvato nella pagina.
+      function showLogin(pendingUrl) {
+        pendingAudioUrl = pendingUrl || null;
+        authCard.classList.remove("hidden");
+        authForm.classList.remove("hidden");
+        authConnected.classList.add("hidden");
+        authBadge.classList.add("hidden");
+        authError.classList.add("hidden");
+        $("auth-heading").textContent = "Accesso a Provider audio";
+        authCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        $("auth-user").focus();
+      }
+
+      function showConnected(user) {
+        authCard.classList.remove("hidden");
+        authForm.classList.add("hidden");
+        authConnected.classList.remove("hidden");
+        authBadge.className = "badge completed";
+        authBadge.textContent = "connesso";
+        $("auth-username").textContent = user || "";
+        $("auth-heading").textContent = "Provider audio";
+      }
+
+      async function submitLogin(event) {
+        event.preventDefault();
+        const passField = $("auth-pass");
+        const username = $("auth-user").value.trim();
+        const password = passField.value;
+        passField.value = ""; // la password non resta nel campo
+        if (!username || !password) return;
+        const btn = $("auth-submit");
+        btn.disabled = true;
+        authError.classList.add("hidden");
+        try {
+          const res = await fetch(API + "/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: username, password: password }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            authErrorText.textContent = res.status === 401 ? "Utente o password errati."
+              : res.status === 429 ? "Troppi tentativi falliti: riprova tra un minuto."
+              : extractError(data, res.status);
+            authError.classList.remove("hidden");
+            passField.focus();
+            return;
+          }
+          showConnected(data.user);
+          toast("Accesso effettuato.", "ok", 2500);
+          const retry = pendingAudioUrl;
+          pendingAudioUrl = null;
+          if (retry) await startAudioTask(retry);
+        } catch (err) {
+          authErrorText.textContent = "Errore di rete: riprova.";
+          authError.classList.remove("hidden");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function doLogout() {
+        try { await fetch(API + "/logout", { method: "POST" }); } catch (e) { /* ignora */ }
+        stopAudioPolling();
+        pendingAudioUrl = null;
+        authCard.classList.add("hidden");
+        toast("Disconnesso.", "info", 2500);
+      }
+
+      async function checkSession() {
+        try {
+          const res = await fetch(API + "/session");
+          const data = await res.json();
+          if (data.authenticated) showConnected(data.user);
+        } catch (e) { /* ignora */ }
+      }
+
       // ---------- Provider audio (façade /audio) ----------
       function audioFormat() {
         const f = selectedFormat();
@@ -750,6 +868,7 @@
             body: JSON.stringify({ url: url, format: format }),
           });
           const data = await res.json().catch(() => ({}));
+          if (res.status === 401) { showLogin(url); return; }  // serve l'accesso: dopo il login si riparte da qui
           if (!res.ok) throw new Error(extractError(data, res.status));
           closeSubscription();
           currentJob = null;
@@ -773,6 +892,7 @@
         const tick = async () => {
           try {
             const res = await fetch(API + "/audio/" + taskId);
+            if (res.status === 401) { stopAudioPolling(); showLogin(null); toast("Sessione scaduta: accedi di nuovo.", "info", 5000); return; }
             if (!res.ok) {
               if (res.status === 404) { stopAudioPolling(); applyAudioTask({ task_id: taskId, state: "failed", message: "Task non trovato", progress: 0 }); }
               return;
@@ -894,6 +1014,9 @@
       $("cleanup-btn").addEventListener("click", runCleanup);
       urlInput.addEventListener("input", syncAudioMode);
       urlInput.addEventListener("change", syncAudioMode);
+      authForm.addEventListener("submit", submitLogin);
+      $("auth-logout").addEventListener("click", doLogout);
+      checkSession();
       window.addEventListener("beforeunload", () => { closeSubscription(); stopAudioPolling(); });
 
       syncBitrate();

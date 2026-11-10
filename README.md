@@ -133,7 +133,37 @@ Se ffmpeg non è nel PATH puoi anche esportare `FFMPEG_LOCATION`.
 
 Una traccia delegata senza match affidabile viene marcata `skipped` (non `failed`) con la query nel messaggio.
 
-### Spotify (solo metadati)
+### Runtime JavaScript (deno): richiesto per YouTube nel Provider audio
+
+yt-dlp ha bisogno di un runtime JavaScript per risolvere le protezioni di YouTube. **Senza deno il provider `youtube` del Provider audio è disabilitato**: i link YouTube e tutti i link Spotify (il cui audio viene cercato su YouTube) falliscono con un messaggio che riporta queste istruzioni. I download normali del sito non ne risentono.
+
+```bash
+winget install DenoLand.Deno
+```
+
+```bash
+brew install deno
+```
+
+```bash
+curl -fsSL https://deno.land/install.sh | sh
+```
+
+Dopo l'installazione riapri il terminale (o riavvia l'app) perché `deno` entri nel PATH. In alternativa indica il binario con `YTDLP_JS_RUNTIME=deno:/percorso/deno`; va bene anche `node`. Servono anche gli script `yt-dlp-ejs`, che arrivano con `yt-dlp[default]` (già in `requirements.txt`). Nella CLI `--allow-no-js-runtime` prosegue comunque, con il rischio di formati mancanti. L'immagine Docker non include ancora deno.
+
+### Spotify
+
+I link Spotify danno solo metadati: l'audio viene cercato su un altro provider (`audio_provider`, di default YouTube). Non si scarica mai audio da Spotify. Ci sono due modi per leggere i metadati.
+
+**1. Pagina embed pubblica (default, nessuna credenziale)**: `sources/spotify_embed.py` scarica `https://open.spotify.com/embed/{tipo}/{id}`, legge il JSON `__NEXT_DATA__` e mappa `trackList` in tracce. Copre track, album e playlist.
+
+- Disponibili: titolo, artisti, durata; per gli album anche nome, artista dell'album, numero di traccia e copertina; per la traccia singola anche anno e copertina.
+- Non disponibili: ISRC, numero di disco, album e copertina dei brani di una playlist (l'immagine della playlist finisce in `extra`, non viene spacciata per copertina del brano), data degli album.
+- Se Spotify cambia la pagina e `__NEXT_DATA__` sparisce, l'errore lo dice e indica l'alternativa qui sotto.
+
+**2. Web API ufficiale (spotipy), solo su richiesta esplicita**: `sources/spotify.py`. Richiede credenziali in `.env` **e Spotify Premium sull'account proprietario dell'app**: senza Premium la Web API risponde 403 "Active premium subscription required for the owner of the app" a ogni richiesta. Si usa in tre casi: forzandola con `--provider spotify`, per gli URL artista (la pagina embed non li copre), oppure come ripiego quando la pagina embed non è leggibile, ma solo se `mode = "spotify_api"` è impostato in `[options.spotify_embed]` e le credenziali sono in `.env`.
+
+### Spotify via Web API (spotipy)
 
 `sources/spotify.py` risolve track, album, playlist e top track di un artista con la Web API ufficiale (spotipy) e delega l'audio al provider indicato in `[options.spotify] audio_provider` (o al primo con ricerca in `[priority]`). Non scarica mai audio da Spotify.
 
@@ -183,7 +213,7 @@ Nota Bandcamp: alle richieste dirette il sito può rispondere con una pagina di 
 ### Hardening
 
 - **Cookie**: `--cookies <file Netscape>` e `--cookies-from-browser <browser[+keyring][:profilo]>` (CLI) o gli stessi parametri di `resolve`/`download`/`TaskQueue` nella façade valgono per tutti i provider; per provider resta `cookiefile` / `cookiesfrombrowser` in `[options.<nome>]`. Un 403 con verifica anti-bot è terminale (`NeedsCookies`): nessun retry finché non fornisci i cookie.
-- **/audio**: Basic Auth sugli endpoint stessi (credenziali da `GRABMEDIA_AUTH_USER`/`GRABMEDIA_AUTH_PASSWORD` oppure da `nginx/.htpasswd`, formato `{SHA}`), path dei file risolto e confinato nella cartella di output (symlink compresi), `Range` con 206/416 tramite Starlette.
+- **/audio**: sessione a cookie. `POST /login` valida utente e password (da `GRABMEDIA_AUTH_USER`/`GRABMEDIA_AUTH_PASSWORD` oppure da `nginx/.htpasswd`, formato `{SHA}` o testo in chiaro) e rilascia un cookie `HttpOnly`, `SameSite=Strict`, `Secure` su https, valido 30 minuti (`GRABMEDIA_SESSION_TTL`). `POST /logout` lo revoca, `GET /session` dice se si è connessi. Un middleware risponde 401 a `/audio` e ai suoi file senza sessione valida; dopo 5 tentativi falliti in un minuto il login risponde 429. Le sessioni stanno in memoria: si azzerano al riavvio e non sono condivise tra più processi. Nella pagina il riquadro di accesso compare quando `/audio` risponde 401; le credenziali non vengono mai salvate nel browser. Path dei file risolto e confinato nella cartella di output (symlink compresi), `Range` con 206/416 tramite Starlette. I download classici (`/download/...`) restano protetti dalla Basic Auth di nginx.
 - **Anti-SSRF**: la façade risolve l'host e rifiuta loopback, privati, link-local, riservati (anche IPv6 e IPv4-mapped); host non risolvibili passano al provider. Nessuna allowlist.
 - **Pin**: `yt-dlp[default]==2026.10.26` e `starlette==1.10.0` solo in `requirements.txt` (runtime unico di app e CLI); `requirements-dev.txt` usa intervalli per provare versioni nuove; il Dockerfile non fa più `--upgrade yt-dlp`. L'extra `[default]` porta `yt-dlp-ejs`, senza cui la signature di YouTube non si risolve nemmeno con deno.
 - **Runtime JS**: rilevato all'avvio (`YTDLP_JS_RUNTIME`, poi deno, poi node) e passato a yt-dlp. `YTDLP_JS_RUNTIME` verso un binario inesistente produce un warning e si passa al rilevamento automatico; la web app senza runtime parte comunque e disabilita il provider YouTube, con le istruzioni di installazione nel messaggio. L'immagine Docker non include ancora deno.

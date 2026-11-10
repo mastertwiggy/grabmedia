@@ -268,53 +268,64 @@ def http_app(fake_sources, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(main.models, "sanitize_url", lambda u: u if u.startswith("http") else (_ for _ in ()).throw(ValueError("schema")))
     monkeypatch.setenv("GRABMEDIA_AUTH_USER", "tester")
     monkeypatch.setenv("GRABMEDIA_AUTH_PASSWORD", "s3cret")
+    main._SESSIONS.clear()        # noqa: SLF001 - stato di modulo: pulito a ogni test
+    main._LOGIN_FAILURES.clear()  # noqa: SLF001
     client = TestClient(main.app)
+    # sessione a cookie: il client resta autenticato per tutto il test
+    assert client.post("/login", json={"username": "tester", "password": "s3cret"}).status_code == 200
     yield main, queue, client, cfg
     queue.stop()
-
-
-AUTH = ("tester", "s3cret")
+    main._SESSIONS.clear()        # noqa: SLF001
+    main._LOGIN_FAILURES.clear()  # noqa: SLF001
 
 
 def _done_task(queue, client, url="https://fakeok.test/one"):
-    created = client.post("/audio", json={"url": url, "format": "best"}, auth=AUTH)
+    created = client.post("/audio", json={"url": url, "format": "best"})
     assert created.status_code == 202
     task = queue.wait(created.json()["task_id"], timeout=30)
     assert task.state == "done" and task.files
     return task
 
 
-def test_audio_requires_basic_auth(http_app):
-    main, queue, client, _ = http_app
+def test_audio_requires_a_session(http_app):
+    """La Basic Auth è stata sostituita dalla sessione a cookie (POST /login):
+    senza cookie /audio e i suoi file rispondono 401, e un header Basic non basta più.
+    I dettagli della sessione sono in tests/test_session_auth.py."""
+    from fastapi.testclient import TestClient
+
+    main, queue, _, _ = http_app
+    anonymous = TestClient(main.app)  # nessun login
     for method, path in (("post", "/audio"), ("get", "/audio/" + "0" * 32), ("get", "/audio/" + "0" * 32 + "/file/0")):
         body = {"json": {"url": "https://fakeok.test/one"}} if method == "post" else {}
-        r = getattr(client, method)(path, **body)
-        assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
-        r = getattr(client, method)(path, auth=("tester", "wrong"), **body)
-        assert r.status_code == 401
+        r = getattr(anonymous, method)(path, **body)
+        assert r.status_code == 401 and r.json()["login"] == "/login"
+        assert "www-authenticate" not in r.headers  # niente finestra Basic del browser
+        r = getattr(anonymous, method)(path, auth=("tester", "s3cret"), **body)
+        assert r.status_code == 401, "le credenziali Basic non aprono più /audio"
     # credenziali da .htpasswd quando l'env non è impostato
     with pytest.MonkeyPatch.context() as mp:
         mp.delenv("GRABMEDIA_AUTH_USER")
         mp.delenv("GRABMEDIA_AUTH_PASSWORD")
         mp.setattr(main, "HTPASSWD_PATH", Path(main.__file__).resolve().parent.parent / "nginx" / ".htpasswd")
-        assert client.get("/audio/" + "0" * 32, auth=("grabmedia", "grabmedia2026")).status_code == 404
-        assert client.get("/audio/" + "0" * 32, auth=("grabmedia", "nope")).status_code == 401
+        assert anonymous.post("/login", json={"username": "grabmedia", "password": "nope"}).status_code == 401
+        assert anonymous.post("/login", json={"username": "grabmedia", "password": "grabmedia2026"}).status_code == 200
+        assert anonymous.get("/audio/" + "0" * 32).status_code == 404  # autenticato: task inesistente
 
 
 def test_audio_file_range_206_and_416(http_app):
     _, queue, client, _ = http_app
     task = _done_task(queue, client)
     url = f"/audio/{task.id}/file/0"
-    full = client.get(url, auth=AUTH)
+    full = client.get(url)
     assert full.status_code == 200 and full.headers.get("accept-ranges") == "bytes"
     size = len(full.content)
-    part = client.get(url, auth=AUTH, headers={"Range": "bytes=0-2"})
+    part = client.get(url, headers={"Range": "bytes=0-2"})
     assert part.status_code == 206 and part.content == full.content[:3]
     assert part.headers["content-range"] == f"bytes 0-2/{size}"
-    bad = client.get(url, auth=AUTH, headers={"Range": f"bytes={size + 100}-"})
+    bad = client.get(url, headers={"Range": f"bytes={size + 100}-"})
     assert bad.status_code == 416 and bad.headers["content-range"] == f"bytes */{size}"
-    assert client.get(f"/audio/{task.id}/file/5", auth=AUTH).status_code == 404
-    assert client.get(f"/audio/{task.id}/file/-1", auth=AUTH).status_code == 404
+    assert client.get(f"/audio/{task.id}/file/5").status_code == 404
+    assert client.get(f"/audio/{task.id}/file/-1").status_code == 404
 
 
 def test_audio_file_traversal_is_rejected(http_app, tmp_path: Path):
@@ -334,16 +345,16 @@ def test_audio_file_traversal_is_rejected(http_app, tmp_path: Path):
     for name, path in cases.items():
         tid = "f" * 31 + "0"
         queue._tasks[tid] = api.Task(id=tid, url="x", state="done", files=[path])  # noqa: SLF001
-        r = client.get(f"/audio/{tid}/file/0", auth=AUTH)
+        r = client.get(f"/audio/{tid}/file/0")
         assert r.status_code == 400, name
     # percorso regolare dentro la root -> servito
     inside = cfg.out_dir / "ok.bin"
     inside.write_bytes(b"fine")
     tid = "e" * 32
     queue._tasks[tid] = api.Task(id=tid, url="x", state="done", files=[str(inside)])  # noqa: SLF001
-    assert client.get(f"/audio/{tid}/file/0", auth=AUTH).content == b"fine"
+    assert client.get(f"/audio/{tid}/file/0").content == b"fine"
     # un id malformato non arriva nemmeno alla logica
-    assert client.get("/audio/../etc/passwd/file/0", auth=AUTH).status_code in (404, 422)
+    assert client.get("/audio/../etc/passwd/file/0").status_code in (404, 422)
 
 
 # ============================================ 7. Contratto errori della façade

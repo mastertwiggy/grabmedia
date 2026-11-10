@@ -491,8 +491,11 @@ class TaskQueue:
             if summary.url_errors:
                 task.message = summary.url_errors[0][1]
                 if summary.url_error_details:
-                    task.kind = summary.url_error_details[0].get("kind")
-                    task.hint = summary.url_error_details[0].get("hint")
+                    detail = summary.url_error_details[0]
+                    # messaggio e hint separati: l'hint ha il suo campo e non va ripetuto nel messaggio
+                    task.message = detail.get("message") or task.message
+                    task.kind = detail.get("kind")
+                    task.hint = detail.get("hint")
             if summary.url_errors and not summary.planned:
                 task.state = FAILED
             elif task.failures and task.tracks_done:

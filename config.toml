@@ -17,7 +17,9 @@ state_db = "downloads/state.sqlite3"
 # Ordine con cui i provider vengono interrogati per can_handle(url):
 # il primo che risponde true vince. I provider non elencati vengono dopo,
 # in ordine alfabetico. Il nome è quello del modulo in sources/<nome>.py.
-order = []
+order = ["spotify_embed", "spotify"]
+# I link di Spotify vanno prima alla pagina embed pubblica (nessuna credenziale);
+# la Web API (spotify) entra solo se forzata con --provider o come fallback esplicito.
 
 [concurrency]
 # Download simultanei per provider. "default" vale per chi non è elencato.
@@ -47,6 +49,14 @@ circuit_cooldown = 60.0
 # [options.youtube]
 # cookiefile = "cookies.txt"          # cookie esportati dal browser (formato Netscape)
 # ffmpeg_location = "C:/ffmpeg/bin"   # se ffmpeg non è nel PATH
+
+# Spotify senza credenziali: metadati dalla pagina embed pubblica, audio delegato.
+[options.spotify_embed]
+mode = "embed"                   # "embed" (default) oppure "spotify_api": fallback sulla Web API se la pagina
+                                 # embed non è leggibile E le credenziali sono in .env (richiede Premium)
+audio_provider = "youtube"       # l'audio dei brani Spotify si cerca su YouTube (serve deno, vedi README).
+                                 # Alternativa senza deno: "soundcloud", ma per la musica commerciale
+                                 # dà spesso solo anteprime da 30 secondi.
 
 # Provider Spotify (solo metadati: l'audio arriva da audio_provider).
 # Le credenziali stanno in .env (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI).
