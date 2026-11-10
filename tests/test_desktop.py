@@ -185,6 +185,15 @@ def test_no_auth_mode_is_opt_in_and_local_only(monkeypatch):
     assert "data.auth_required === false" in page
 
 
+def test_headless_mode_stops_cleanly_on_sigterm():
+    """Su macOS/Linux "termina" arriva come SIGTERM: deve fermare server e worker
+    come Ctrl+C, non lasciare il worker senza padre."""
+    source = (ROOT / "desktop" / "grabmedia_desktop.py").read_text(encoding="utf-8")
+    assert "signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)" in source
+    with pytest.raises(KeyboardInterrupt):
+        gd._raise_keyboard_interrupt(15, None)
+
+
 def test_program_exits_even_with_threads_still_running(tmp_path: Path):
     """Dopo "Esci" il processo deve terminare davvero: i thread non daemon del
     Redis in memoria lo tenevano vivo in background."""
@@ -282,6 +291,9 @@ def test_build_names_and_deno_lookup(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(build.sys, "platform", "win32")
     monkeypatch.setattr(build.platform, "machine", lambda: "AMD64")
     assert build.archive_name() == "GrabMedia-windows-x64.zip" and build.built_path().name == "GrabMedia"
+    # build.sys è il modulo sys vero: la piattaforma finta va tolta prima di usare
+    # altro codice (su macOS shutil.which, credendosi su Windows, andava in errore)
+    monkeypatch.undo()
 
     deno = tmp_path / "deno-finto"
     deno.write_bytes(b"x")

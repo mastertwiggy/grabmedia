@@ -450,7 +450,17 @@ def run_gui(backend: Backend) -> None:
     root.mainloop()
 
 
+def _raise_keyboard_interrupt(signum, frame) -> None:  # noqa: ARG001
+    raise KeyboardInterrupt
+
+
 def run_headless(backend: Backend) -> int:
+    import signal
+
+    try:  # "termina" (SIGTERM) ferma server e worker come Ctrl+C
+        signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+    except (ValueError, OSError):
+        pass
     backend.start()
     if not backend.wait_ready():
         print(f"Avvio non riuscito: {backend.error or 'tempo scaduto'}", flush=True)

@@ -96,9 +96,15 @@ jobs:
             if curl -fsS -m 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          curl -fsS -m 10 http://127.0.0.1:8765/health | tee /dev/stderr | grep -q '"redis":true'
-          curl -fsS -m 10 http://127.0.0.1:8765/session | tee /dev/stderr | grep -q '"auth_required":false'
+          # niente "tee /dev/stderr": sui runner Windows (Git Bash) non esiste
+          HEALTH="$(curl -fsS -m 10 http://127.0.0.1:8765/health)"
+          echo "health: $HEALTH"
+          grep -q '"redis":true' <<<"$HEALTH"
+          SESSION="$(curl -fsS -m 10 http://127.0.0.1:8765/session)"
+          echo "session: $SESSION"
+          grep -q '"auth_required":false' <<<"$SESSION"
           curl -fsS -m 10 -o /dev/null http://127.0.0.1:8765/
+          echo "pagina del sito: ok"
 
       - uses: actions/upload-artifact@v4
         with:
