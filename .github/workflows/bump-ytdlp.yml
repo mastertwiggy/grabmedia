@@ -50,6 +50,11 @@ jobs:
   bump:
     runs-on: ubuntu-latest   # runner con rete: PyPI, YouTube (canary)
     timeout-minutes: 30
+    defaults:
+      run:
+        # "shell: bash" esplicito = bash -eo pipefail: senza, la shell di default
+        # non ha pipefail e "comando_mancante | head" esce con 0 (è successo con ffmpeg).
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -62,14 +67,20 @@ jobs:
         with:
           deno-version: v2.x
 
+      # ubuntu-latest NON ha ffmpeg preinstallato (verificato: "command not found").
+      - name: ffmpeg (action, build statica nella tool cache)
+        uses: FedericoCarboni/setup-ffmpeg@v3
+
       - name: ffmpeg presente sul runner
-        run: ffmpeg -version | head -1
+        run: |
+          command -v ffmpeg
+          ffmpeg -hide_banner -version | sed -n 1p
 
       - name: Determina versione corrente e ultima release
         id: versions
         run: |
           set -euo pipefail
-          current=$(grep -oP '^yt-dlp==\K\S+' requirements.txt)
+          current=$(grep -oP '^yt-dlp(\[default\])?==\K\S+' requirements.txt)
           if [ -n "${{ inputs.version }}" ]; then
             latest="${{ inputs.version }}"
           else
@@ -112,15 +123,16 @@ jobs:
         if: steps.versions.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          sed -i "s/^yt-dlp==.*/yt-dlp==${{ steps.versions.outputs.latest }}/" requirements.txt
-          grep -n "^yt-dlp==" requirements.txt
+          sed -i -E "s/^yt-dlp(\[default\])?==.*/yt-dlp[default]==${{ steps.versions.outputs.latest }}/" requirements.txt
+          grep -n "^yt-dlp" requirements.txt
 
       - name: Installa dipendenze di test con la versione pinnata
         if: steps.versions.outputs.run == 'true'
         run: |
           python -m pip install -q -r requirements-dev.txt
-          python -m pip install -q "yt-dlp==${{ steps.versions.outputs.latest }}"
-          python -c "import yt_dlp.version as v; print('yt-dlp', v.__version__)"
+          # [default] porta yt-dlp-ejs nella versione abbinata a questa release
+          python -m pip install -q "yt-dlp[default]==${{ steps.versions.outputs.latest }}"
+          python -c "import importlib.metadata as md; print('yt-dlp', md.version('yt-dlp'), '| yt-dlp-ejs', md.version('yt-dlp-ejs'))"
 
       - name: Test d'integrazione (process_ie_result) + suite completa
         if: steps.versions.outputs.run == 'true'
@@ -128,7 +140,12 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          python -m pytest tests -q -p no:cacheprovider -o faulthandler_timeout=120 --deselect tests/test_canary_youtube.py 2>&1 | tee suite.log
+          python -m pytest tests -q -p no:cacheprovider -o faulthandler_timeout=120 -rs --deselect tests/test_canary_youtube.py 2>&1 | tee suite.log
+          # anti-skip: in CI nessun test deve saltare (il test d'integrazione salta se manca ffmpeg)
+          if grep -qE "(^|[^a-z])[0-9]+ skipped" suite.log; then
+            echo "::error::La suite ha saltato dei test (vedi le righe SKIPPED): in CI non è ammesso, il test d'integrazione deve girare"
+            exit 1
+          fi
 
       - name: Canary - runtime JS rilevato (deno --version + riga di rilevamento di yt-dlp)
         if: steps.versions.outputs.run == 'true'
@@ -167,6 +184,10 @@ jobs:
             exit 1
           fi
           grep -qE "[0-9]+ passed" canary.log || { echo "::error::Il canary non riporta test passati"; exit 1; }
+          # canary parziale: verde, ma lo si deve vedere
+          if grep -q "bloccati dal bot-check" canary.log; then
+            echo "::warning::Canary parziale: YouTube ha chiesto la verifica anti-bot per almeno un video (IP del runner); valutati solo gli altri."
+          fi
 
       - name: Verde - apri la PR con il solo bump
         if: steps.versions.outputs.changed == 'true' && steps.suite.outcome == 'success' && steps.runtime.outcome == 'success' && steps.canary.outcome == 'success'

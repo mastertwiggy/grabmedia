@@ -109,6 +109,48 @@ def test_all_failure_reasons_are_collected():
     assert len(verdict.reasons) == 5 and verdict.reasons[0].startswith("fallback")
 
 
+def test_bot_checked_videos_are_noted_not_failed_unless_all_blocked():
+    """YouTube può chiedere la verifica anti-bot all'IP del runner (visto nel
+    primo run reale). Un video bloccato non dice niente su yt-dlp: nota, non
+    fallimento; tutti bloccati -> canary non conclusivo, fallimento esplicito."""
+    partial = canary.evaluate(GOOD_VERBOSE, True, [128.9], ["251"], blocked=["9bZkp7q19f0"])
+    assert partial.ok and partial.reasons == []
+    assert partial.notes == ["video bloccati dal bot-check e non valutati: 9bZkp7q19f0"]
+    assert partial.median_abr == pytest.approx(128.9)
+    none = canary.evaluate(GOOD_VERBOSE, True, [], [], blocked=list(canary.CANARY_VIDEOS))
+    assert not none.ok and len(none.reasons) == 1 and "NON CONCLUSIVO" in none.reasons[0]
+    # un video bloccato non maschera i gate veri sugli altri
+    broken = canary.evaluate(GOOD_VERBOSE + ["WARNING: [youtube] x: Signature solving failed: Some formats may be missing"],
+                             True, [128.9], ["251"], blocked=["9bZkp7q19f0"])
+    assert not broken.ok and broken.reasons[0].startswith("fallback")
+    # altri errori di estrazione sono sempre un fallimento
+    failed = canary.evaluate(GOOD_VERBOSE, True, [128.9], ["251"], errors=["9bZkp7q19f0: ERROR: Video unavailable"])
+    assert not failed.ok and any("estrazione fallita" in r for r in failed.reasons)
+    assert not canary.evaluate(GOOD_VERBOSE, True, [], [], errors=["x: boom"]).ok
+
+
+def test_real_run_signature_warning_is_caught():
+    """Riga esatta emessa da yt-dlp nel run reale con deno presente ma senza
+    yt-dlp-ejs: il gate primario la deve riconoscere."""
+    line = ("WARNING: [youtube] dQw4w9WgXcQ: Signature solving failed: Some formats may be missing. Ensure you have a "
+            "supported JavaScript runtime and challenge solver script distribution installed.")
+    assert canary.SIGNATURE_FALLBACK_RE.search(line)
+    assert not canary.evaluate(GOOD_VERBOSE + [line], True, [128.9, 126.6], GOOD_IDS).ok
+
+
+def test_challenge_solver_scripts_are_installed():
+    """deno da solo non basta: servono gli script di yt-dlp-ejs, che arrivano con
+    l'extra [default] nella versione abbinata alla release di yt-dlp."""
+    import importlib.metadata as md
+
+    wanted = [r for r in md.requires("yt-dlp") or [] if r.startswith("yt-dlp-ejs")]
+    assert wanted, "questa release di yt-dlp non dichiara yt-dlp-ejs nell'extra default: rivedere il pin"
+    version = re.search(r"==\s*([\w.]+)", wanted[0]).group(1)
+    assert md.version("yt-dlp-ejs") == version
+    root = Path(__file__).resolve().parent.parent
+    assert re.search(r"^yt-dlp\[default\]==", (root / "requirements.txt").read_text(encoding="utf-8"), re.M)
+
+
 def test_canary_is_skippable_locally_without_env(monkeypatch):
     monkeypatch.delenv("GRABMEDIA_CANARY", raising=False)
     mark = canary.pytestmark
@@ -172,9 +214,29 @@ def test_workflow_permissions_concurrency_and_setup():
     granted = dict(re.findall(r"^\s+([a-z-]+):\s*(\w+)\s*$", permissions, re.M))
     assert granted == {"contents": "write", "pull-requests": "write", "issues": "write"}
     assert "concurrency:" in text and "cancel-in-progress: true" in text
-    assert "denoland/setup-deno" in text and "ffmpeg -version" in text
+    assert "denoland/setup-deno" in text
     commands = [ln for ln in text.splitlines() if not ln.strip().startswith("#")]
     assert not any(re.search(r"(^|\s|&&\s*)sudo\s", ln) for ln in commands), "nessun comando sudo nel workflow"
+
+
+def test_workflow_lessons_from_the_first_real_runs():
+    """Difetti trovati solo eseguendo davvero il workflow."""
+    yaml = pytest.importorskip("yaml")
+    text = _workflow()
+    job = yaml.safe_load(text)["jobs"]["bump"]
+    # 1. senza "shell: bash" esplicito non c'è pipefail: "ffmpeg -version | head -1" usciva con 0 senza ffmpeg
+    assert job["defaults"]["run"]["shell"] == "bash"
+    assert not re.search(r"ffmpeg[^\n|]*\|\s*head", text), "niente pipe verso head sul controllo di ffmpeg"
+    # 2. ubuntu-latest non ha ffmpeg: va installato (senza sudo) e verificato
+    uses = [s.get("uses", "") for s in job["steps"]]
+    assert any(u.startswith("FedericoCarboni/setup-ffmpeg@") for u in uses)
+    assert "command -v ffmpeg" in text
+    # 3. la suite non può saltare test in CI (il test d'integrazione saltava senza ffmpeg)
+    suite = next(s for s in job["steps"] if s.get("id") == "suite")
+    assert "-rs" in suite["run"] and "skipped" in suite["run"] and "exit 1" in suite["run"]
+    # 4. deno da solo non basta: yt-dlp va installato con l'extra [default] (yt-dlp-ejs)
+    assert 'pip install -q "yt-dlp[default]==' in text
+    assert r"yt-dlp(\[default\])?==" in text  # grep e sed accettano il pin con o senza extra
 
 
 def test_workflow_forces_and_guards_the_canary():

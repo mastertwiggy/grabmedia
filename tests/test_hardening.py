@@ -176,11 +176,12 @@ def test_single_exact_pin_in_runtime_and_range_only_in_dev():
 
     root = Path(__file__).resolve().parent.parent
     files = {p.name: p.read_text(encoding="utf-8") for p in root.glob("requirements*.txt")}
-    exact = {name: re.findall(r"^yt-dlp==(\S+)", text, re.M) for name, text in files.items()}
+    # il pin può portare l'extra [default] (yt-dlp-ejs): resta un solo pin esatto
+    exact = {name: re.findall(r"^yt-dlp(?:\[default\])?==(\S+)", text, re.M) for name, text in files.items()}
     exact = {k: v_ for k, v_ in exact.items() if v_}
     assert exact == {"requirements.txt": [v.__version__]}, "un solo pin esatto, nel file del runtime, = versione installata"
     assert "-r requirements.txt" in files["requirements-cli.txt"], "la CLI installa lo stesso file dell'app"
-    assert re.search(r"^yt-dlp>=\S+,<\S+", files["requirements-dev.txt"], re.M), "intervallo solo in dev"
+    assert re.search(r"^yt-dlp(?:\[default\])?>=\S+,<\S+", files["requirements-dev.txt"], re.M), "intervallo solo in dev"
     assert "-r requirements.txt" not in files["requirements-dev.txt"]
     docker = (root / "Dockerfile").read_text(encoding="utf-8")
     assert "--upgrade yt-dlp" not in docker and "-r requirements.txt" in docker

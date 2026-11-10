@@ -99,6 +99,7 @@ class CanaryVerdict:
     reasons: list[str] = field(default_factory=list)
     median_abr: float | None = None
     runtime_line: str | None = None
+    notes: list[str] = field(default_factory=list)  # non fallimenti, ma da vedere (es. video bloccati)
 
 
 def bitrate_kbps(info: dict) -> float | None:
@@ -123,11 +124,33 @@ def evaluate(
     runtime_detected: bool,
     abr_values: list[float | None],
     format_ids: list[str | None],
+    *,
+    blocked: list[str] | tuple[str, ...] = (),
+    errors: list[str] | tuple[str, ...] = (),
 ) -> CanaryVerdict:
     """Logica pura del canary: righe di log (verbose), runtime rilevato dal core,
-    bitrate e id del formato scelto per ciascun video. Tutte le ragioni di
-    fallimento vengono raccolte, non solo la prima."""
+    bitrate e id del formato scelto per ciascun video VALUTATO. Tutte le ragioni
+    di fallimento vengono raccolte, non solo la prima.
+
+    ``blocked``: video per cui YouTube ha chiesto la verifica anti-bot (succede
+    sugli IP dei runner): non dicono niente su yt-dlp, quindi non sono un
+    fallimento finché almeno un video è stato valutato; se sono TUTTI bloccati
+    il canary è non conclusivo e fallisce in modo esplicito. Nessun tentativo
+    di aggirare la verifica. ``errors``: estrazioni fallite per altri motivi,
+    sempre un fallimento."""
     reasons: list[str] = []
+    notes: list[str] = []
+    for message in errors:
+        reasons.append("estrazione fallita: " + message[:200])
+    if blocked:
+        if not abr_values:
+            reasons.append(
+                "canary NON CONCLUSIVO: YouTube ha chiesto la verifica anti-bot per tutti i video "
+                f"({', '.join(blocked)}). Non è un degrado di yt-dlp ma niente è stato verificato: "
+                "rilancia il job o usa un runner con un IP non bloccato"
+            )
+        else:
+            notes.append(f"video bloccati dal bot-check e non valutati: {', '.join(blocked)}")
 
     # 1. gate primario: fallback sulla risoluzione della signature
     fallbacks = [ln for ln in log_lines if SIGNATURE_FALLBACK_RE.search(ln)]
@@ -160,10 +183,11 @@ def evaluate(
     if len(known) < len(abr_values):
         reasons.append(f"bitrate non riportato per {len(abr_values) - len(known)} video su {len(abr_values)}")
     if median is None:
-        reasons.append("nessun bitrate misurabile")
+        if not (blocked and not abr_values):  # il "non conclusivo" è già stato riportato sopra
+            reasons.append("nessun bitrate misurabile")
     elif median <= MIN_MEDIAN_ABR_KBPS:
         reasons.append(f"mediana del bitrate di -f bestaudio = {median:.1f} kbps (<= pavimento {MIN_MEDIAN_ABR_KBPS:.0f})")
-    return CanaryVerdict(ok=not reasons, reasons=reasons, median_abr=median, runtime_line=runtime_line)
+    return CanaryVerdict(ok=not reasons, reasons=reasons, median_abr=median, runtime_line=runtime_line, notes=notes)
 
 
 def test_youtube_bestaudio_with_js_runtime():
@@ -182,15 +206,28 @@ def test_youtube_bestaudio_with_js_runtime():
     abr_values: list[float | None] = []
     format_ids: list[str | None] = []
     chosen_desc: list[str] = []
+    blocked: list[str] = []
+    errors: list[str] = []
     with yt_dlp.YoutubeDL(opts) as ydl:
         for video_id in CANARY_VIDEOS:
-            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            try:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            except yt_dlp.utils.DownloadError as exc:
+                # verifica anti-bot sull'IP del runner: non si aggira, si registra
+                kind, _ = _ytdlp.classify_error(str(exc))
+                if kind in ("auth", "need_cookies"):
+                    blocked.append(video_id)
+                else:
+                    errors.append(f"{video_id}: {str(exc).strip().splitlines()[0]}")
+                continue
             chosen = info.get("requested_formats", [info])[0] if info.get("requested_formats") else info
             abr_values.append(bitrate_kbps(chosen))
             format_ids.append(chosen.get("format_id"))
             chosen_desc.append(f"{video_id}: {chosen.get('format_id')} {chosen.get('acodec')} {bitrate_kbps(chosen)} kbps")
 
-    verdict = evaluate(logger.lines, runtime is not None, abr_values, format_ids)
+    verdict = evaluate(logger.lines, runtime is not None, abr_values, format_ids, blocked=blocked, errors=errors)
     print(f"runtime JS (core): {runtime.as_env() if runtime else 'NESSUNO'} | yt-dlp JS runtimes: {verdict.runtime_line} | "
           + " | ".join(chosen_desc) + f" | mediana: {verdict.median_abr} | righe di log: {len(logger.lines)}")
+    for note in verdict.notes:
+        print("NOTA:", note)
     assert verdict.ok, "canary YouTube fallito:\n- " + "\n- ".join(verdict.reasons)
